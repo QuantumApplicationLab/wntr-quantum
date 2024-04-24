@@ -1,11 +1,13 @@
-import numpy as np
-import scipy.sparse as sp
-import warnings
 import logging
 import time
-from wntr.sim.solvers import NewtonSolver, SolverStatus
-from quantum_newton_raphson.splu_solver import SPLU_SOLVER 
-from quantum_newton_raphson.result import SPLUResult, VQLSResult, QUBOResult 
+import warnings
+import numpy as np
+import scipy.sparse as sp
+from quantum_newton_raphson.result import QUBOResult
+from quantum_newton_raphson.result import VQLSResult
+from quantum_newton_raphson.splu_solver import SPLU_SOLVER
+from wntr.sim.solvers import NewtonSolver
+from wntr.sim.solvers import SolverStatus
 
 warnings.filterwarnings(
     "error", "Matrix is exactly singular", sp.linalg.MatrixRankWarning
@@ -15,7 +17,7 @@ np.set_printoptions(precision=3, threshold=10000, linewidth=300)
 logger = logging.getLogger(__name__)
 
 def get_solution_vector(result: SPLU_SOLVER | VQLSResult | QUBOResult) -> np.ndarray:
-    """Get the soluion vector from the result dataclass
+    """Get the soluion vector from the result dataclass.
 
     Args:
         result (SPLU_SOLVER | VQLSResult | QUBOResult): linear solver dataclass result
@@ -26,8 +28,7 @@ def get_solution_vector(result: SPLU_SOLVER | VQLSResult | QUBOResult) -> np.nda
     return result.solution
 
 class QuantumNewtonSolver(NewtonSolver):
-    """
-    Quantum Newton Solver class.
+    """Quantum Newton Solver class.
 
     Attributes
     ----------
@@ -53,14 +54,18 @@ class QuantumNewtonSolver(NewtonSolver):
     """
 
     def __init__(self, linear_solver=SPLU_SOLVER(), options=None):
+        """Init the solver.
+
+        Args:
+            linear_solver (SolverBase, optional): Linear solver for the NR step. Defaults to SPLU_SOLVER().
+            options (_type_, optional): options for the NR solver. Defaults to None.
+        """
         super().__init__(options)
         self._linear_solver = linear_solver
 
 
     def solve(self, model, ostream=None):
-        """
-
-        Parameters
+        """Parameters
         ----------
         model: wntr.aml.Model
 
@@ -69,7 +74,7 @@ class QuantumNewtonSolver(NewtonSolver):
         status: SolverStatus
         message: str
         iter_count: int
-        """
+        """  # noqa: D205
         t0 = time.time()
 
         x = model.get_x()
@@ -81,6 +86,8 @@ class QuantumNewtonSolver(NewtonSolver):
             )
 
         use_r_ = False
+        r_ = None
+        new_norm = None
 
         # MAIN NEWTON LOOP
         for outer_iter in range(self.maxiter):
@@ -148,7 +155,7 @@ class QuantumNewtonSolver(NewtonSolver):
                         outer_iter,
                     )
                 if self.log_progress or ostream is not None:
-                    msg = f"iter: {outer_iter:<4d} norm: {new_norm:<10.2e} alpha: {alpha:<10.2e} time: {time.time() - t0:<8.4f}"
+                    msg = f"iter: {outer_iter:<4d} norm: {new_norm:<10.2e} alpha: {alpha:<10.2e} time: {time.time() - t0:<8.4f}"  # noqa: E501
                     if self.log_progress:
                         logger.log(self.log_level, msg)
                     if ostream is not None:
