@@ -1,5 +1,6 @@
 """Documentation about wntr_quantum."""
 import logging
+from . import sim
 
 logging.getLogger(__name__).addHandler(logging.NullHandler())
 

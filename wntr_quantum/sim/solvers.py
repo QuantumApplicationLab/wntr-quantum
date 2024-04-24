@@ -3,8 +3,6 @@ import time
 import warnings
 import numpy as np
 import scipy.sparse as sp
-from quantum_newton_raphson.result import QUBOResult
-from quantum_newton_raphson.result import VQLSResult
 from quantum_newton_raphson.splu_solver import SPLU_SOLVER
 from wntr.sim.solvers import NewtonSolver
 from wntr.sim.solvers import SolverStatus
@@ -16,7 +14,7 @@ np.set_printoptions(precision=3, threshold=10000, linewidth=300)
 
 logger = logging.getLogger(__name__)
 
-def get_solution_vector(result: SPLU_SOLVER | VQLSResult | QUBOResult) -> np.ndarray:
+def get_solution_vector(result) -> np.ndarray:
     """Get the soluion vector from the result dataclass.
 
     Args:
@@ -53,7 +51,7 @@ class QuantumNewtonSolver(NewtonSolver):
         A line search will not be used for any iteration prior to bt_start_iter
     """
 
-    def __init__(self, linear_solver=SPLU_SOLVER(), options=None):
+    def __init__(self, linear_solver, options=None):
         """Init the solver.
 
         Args:
@@ -61,6 +59,22 @@ class QuantumNewtonSolver(NewtonSolver):
             options (_type_, optional): options for the NR solver. Defaults to None.
         """
         super().__init__(options)
+
+        if "LOG_PROGRESS" not in self._options:
+            self.log_progress = False
+        else:
+            self.log_progress = self._options["LOG_PROGRESS"]
+
+        if "LOG_LEVEL" not in self._options:
+            self.log_level = logging.DEBUG
+        else:
+            self.log_level = self._options["LOG_LEVEL"]
+
+        if "TIME_LIMIT" not in self._options:
+            self.time_limit = 3600
+        else:
+            self.time_limit = self._options["TIME_LIMIT"]
+
         self._linear_solver = linear_solver
 
 
@@ -124,6 +138,7 @@ class QuantumNewtonSolver(NewtonSolver):
 
             # Call Linear solver
             try:
+                # print(self._linear_solver)
                 d = -get_solution_vector(self._linear_solver(J, r))
                 # d = -sp.linalg.spsolve(J, r, permc_spec="COLAMD", use_umfpack=False)
             except sp.linalg.MatrixRankWarning:
