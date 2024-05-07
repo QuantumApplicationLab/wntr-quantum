@@ -3,7 +3,6 @@ import time
 import warnings
 import numpy as np
 import scipy.sparse as sp
-from quantum_newton_raphson.splu_solver import SPLU_SOLVER
 from wntr.sim.solvers import NewtonSolver
 from wntr.sim.solvers import SolverStatus
 
@@ -13,6 +12,7 @@ warnings.filterwarnings(
 np.set_printoptions(precision=3, threshold=10000, linewidth=300)
 
 logger = logging.getLogger(__name__)
+
 
 def get_solution_vector(result) -> np.ndarray:
     """Get the soluion vector from the result dataclass.
@@ -24,6 +24,7 @@ def get_solution_vector(result) -> np.ndarray:
         np.ndarray: solution vector
     """
     return result.solution
+
 
 class QuantumNewtonSolver(NewtonSolver):
     """Quantum Newton Solver class.
@@ -77,7 +78,6 @@ class QuantumNewtonSolver(NewtonSolver):
 
         self._linear_solver = linear_solver
 
-
     def solve(self, model, ostream=None):
         """Parameters
         ----------
@@ -102,6 +102,7 @@ class QuantumNewtonSolver(NewtonSolver):
         use_r_ = False
         r_ = None
         new_norm = None
+        max_absval = 50
 
         # MAIN NEWTON LOOP
         for outer_iter in range(self.maxiter):
@@ -128,19 +129,30 @@ class QuantumNewtonSolver(NewtonSolver):
                         ostream.write(msg + "\n")
 
             if r_norm < self.tol:
+                print("Success", r)
                 return (
                     SolverStatus.converged,
                     "Solved Successfully",
                     outer_iter,
                 )
 
+            # get Jacobian
             J = model.evaluate_jacobian(x=None)
 
-            # Call Linear solver
+            # Call Quantum Linear Solver and get the results
             try:
-                # print(self._linear_solver)
+                # change the range if we can
+                if "range" in self._linear_solver.options:
+                    self._linear_solver.options["range"] = max_absval
+                    print(self._linear_solver.options["range"])
+
                 d = -get_solution_vector(self._linear_solver(J, r))
-                # d = -sp.linalg.spsolve(J, r, permc_spec="COLAMD", use_umfpack=False)
+                print(outer_iter, self._linear_solver, d, r_norm, self.tol)
+                max_absval = [5 * x for x in d]
+
+                # d = jacobi_iteration(J.todense(), r, d)
+                # print(outer_iter, self._linear_solver, d, r_norm, self.tol)
+
             except sp.linalg.MatrixRankWarning:
                 return (
                     SolverStatus.error,
@@ -184,3 +196,32 @@ class QuantumNewtonSolver(NewtonSolver):
             "Reached maximum number of iterations: " + str(outer_iter),
             outer_iter,
         )
+
+
+def jacobi_iteration(A, b, x0, max_iter=100, eps=1e-3):
+    """Jacobi iteration to refine the solution.
+
+    Args:
+        A (_type_): _description_
+        b (_type_): _description_
+        x0 (_type_): _description_
+        max_iter (int, optional): _description_. Defaults to 100.
+        eps (_type_, optional): _description_. Defaults to 1E-3.
+    """
+    x = np.copy(x0)
+    D = np.diag(A)
+    D = np.array([d if d != 0 else 1 for d in D])
+    R = A - np.diagflat(D)
+
+    residue = np.linalg.norm(A @ x - b)
+    niter = 0
+
+    while residue > eps:
+        x = b - np.dot(R, x) / D
+        x = np.asarray(x).reshape(-1)
+        residue = np.linalg.norm(A @ x - b)
+        niter += 1
+        if niter > max_iter:
+            break
+
+    return x
