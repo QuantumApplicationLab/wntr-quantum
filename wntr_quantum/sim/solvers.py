@@ -5,6 +5,8 @@ import numpy as np
 import scipy.sparse as sp
 from wntr.sim.solvers import NewtonSolver
 from wntr.sim.solvers import SolverStatus
+from quantum_newton_raphson.splu_solver import SPLU_SOLVER
+import matplotlib.pyplot as plt
 
 warnings.filterwarnings(
     "error", "Matrix is exactly singular", sp.linalg.MatrixRankWarning
@@ -76,6 +78,11 @@ class QuantumNewtonSolver(NewtonSolver):
         else:
             self.time_limit = self._options["TIME_LIMIT"]
 
+        if "FIXED_POINT" not in self._options:
+            self.fixed_point = False
+        else:
+            self.fixed_point = self._options["FIXED_POINT"]
+
         self._linear_solver = linear_solver
 
     def solve(self, model, ostream=None):
@@ -102,7 +109,12 @@ class QuantumNewtonSolver(NewtonSolver):
         use_r_ = False
         r_ = None
         new_norm = None
-        max_absval = 50
+        ref_solver = SPLU_SOLVER()
+
+        if hasattr(self._linear_solver, "options"):
+            if "range" in self._linear_solver.options:
+                initial_range = self._linear_solver.options["range"]
+                initial_offset = self._linear_solver.options["offset"]
 
         # MAIN NEWTON LOOP
         for outer_iter in range(self.maxiter):
@@ -141,17 +153,36 @@ class QuantumNewtonSolver(NewtonSolver):
 
             # Call Quantum Linear Solver and get the results
             try:
-                # change the range if we can
-                if "range" in self._linear_solver.options:
-                    self._linear_solver.options["range"] = max_absval
-                    print(self._linear_solver.options["range"])
 
+                print("Matrix")
+                print(J.todense())
+                print("RHS")
+                print(r)
+
+                # get the reference solution
+                dref = -get_solution_vector(ref_solver(J, r))
+                print(dref)
+
+                # get the approxmate of the solution
                 d = -get_solution_vector(self._linear_solver(J, r))
-                print(outer_iter, self._linear_solver, d, r_norm, self.tol)
-                max_absval = [5 * x for x in d]
-
-                # d = jacobi_iteration(J.todense(), r, d)
                 # print(outer_iter, self._linear_solver, d, r_norm, self.tol)
+                print(d)
+
+                plt.scatter(dref, d)
+                plt.axline((0, 0), slope=1, color="k")
+                plt.show()
+
+                # use a fixed point [doesn't work]
+                if self.fixed_point:
+                    d = sor_solver(
+                        (J.T @ J).todense(), (J @ r), d, max_iter=10, eps=1e-3
+                    )
+
+                # init the range encoding
+                if hasattr(self._linear_solver, "options"):
+                    if "range" in self._linear_solver.options:
+                        self._linear_solver.options["range"] = initial_range
+                        self._linear_solver.options["offset"] = initial_offset
 
             except sp.linalg.MatrixRankWarning:
                 return (
@@ -225,3 +256,31 @@ def jacobi_iteration(A, b, x0, max_iter=100, eps=1e-3):
             break
 
     return x
+
+
+def sor_solver(A, b, initial_guess, max_iter=10, omega=0.05, eps=1e-8):
+    """This is an implementation of the pseduo-code provided in the Wikipedia article.
+    Inputs:
+      A: nxn numpy matrix
+      b: n dimensional numpy vector
+      omega: relaxation factor
+      initial_guess: An initial solution guess for the solver to start with
+    Returns:
+      phi: solution vector of dimension n.
+    """  # noqa: D205
+    phi = np.copy(initial_guess)
+    residual = np.linalg.norm(np.matmul(A, phi) - b)  # Initial residual
+    iiter = 0
+    while residual > eps:
+        if iiter >= max_iter:
+            break
+        for i in range(A.shape[0]):
+            sigma = 0
+            for j in range(A.shape[1]):
+                if j != i:
+                    sigma += A[i, j] * phi[j]
+            phi[i] = (1 - omega) * phi[i] + (omega / A[i, i]) * (b[i] - sigma)
+        residual = np.linalg.norm(np.matmul(A, phi) - b)
+        # print("Residual: {0:10.6g}".format(residual))
+        iiter += 1
+    return phi
