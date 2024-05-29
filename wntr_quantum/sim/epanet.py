@@ -2,15 +2,13 @@
 """
 
 import logging
-import warnings
 import wntr.epanet.io
-from wntr.network.io import write_inpfile
 from wntr.sim.epanet import EpanetSimulator
 
 logger = logging.getLogger(__name__)
 
 try:
-    import wntr.epanet.toolkit
+    import wntr_quantum.epanet.toolkit
 except ImportError as e:
     print("{}".format(e))
     logger.critical("%s", e)
@@ -21,8 +19,7 @@ except ImportError as e:
 
 
 class QuantumEpanetSimulator(EpanetSimulator):
-    """
-    Fast EPANET simulator class.
+    """Fast EPANET simulator class.
 
     Use the EPANET DLL to run an INP file as-is, and read the results from the
     binary output file. Multiple water quality simulations are still possible
@@ -59,7 +56,7 @@ class QuantumEpanetSimulator(EpanetSimulator):
 
     """
 
-    def __init__(self, wn, reader=None, result_types=None):
+    def __init__(self, wn, reader=None, result_types=None):  # noqa: D107
         EpanetSimulator.__init__(self, wn)
         self.reader = reader
         self.prep_time_before_main_loop = 0.0
@@ -75,8 +72,7 @@ class QuantumEpanetSimulator(EpanetSimulator):
         version=2.2,
         convergence_error=False,
     ):
-        """
-        Run the EPANET simulator.
+        """Run the EPANET simulator.
 
         Runs the EPANET simulator through the compiled toolkit DLL. Can use/save hydraulics
         to allow for separate WQ runs.
@@ -111,13 +107,16 @@ class QuantumEpanetSimulator(EpanetSimulator):
         if isinstance(version, str):
             version = float(version)
         inpfile = file_prefix + ".inp"
-        write_inpfile(
-            self._wn,
-            inpfile,
-            units=self._wn.options.hydraulic.inpfile_units,
-            version=version,
+        # write_inpfile(
+        #     self._wn,
+        #     inpfile,
+        #     units=self._wn.options.hydraulic.inpfile_units,
+        #     version=version,
+        # )
+        self._wn.write_inpfile(
+            inpfile, units=self._wn.options.hydraulic.inpfile_units, version=version
         )
-        enData = wntr.epanet.toolkit.ENepanet(version=version)
+        enData = wntr_quantum.epanet.toolkit.ENepanet_quantum(version=version)
         rptfile = file_prefix + ".rpt"
         outfile = file_prefix + ".bin"
 

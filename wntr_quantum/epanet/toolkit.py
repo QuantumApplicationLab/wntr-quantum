@@ -13,7 +13,7 @@ from wntr.epanet.toolkit import ENepanet
 
 logger = logging.getLogger(__name__)
 
-epanet_toolkit = "wntr.epanet.toolkit"
+epanet_quantum_toolkit = "wntr_quantum.epanet.toolkit"
 
 if os.name in ["nt", "dos"]:
     libepanet = resource_filename(__name__, "Windows/epanet2.dll")
@@ -42,12 +42,10 @@ class ENepanet_quantum(ENepanet):
             version : float
                 EPANET version to use (either 2.0 or 2.2)
         """  # noqa: D205
-        super.__init__(inpfile, rptfile, binfile, version)
+        super().__init__(inpfile, rptfile, binfile, version)
 
         if float(version) == 2.0:
-            libnames = ["epanet2_x86", "epanet2", "epanet"]
-            if "64" in platform.machine():
-                libnames.insert(0, "epanet2_amd64")
+            raise NotImplementedError("Not implemented for EPANET2 and only for 2.2")
         elif float(version) == 2.2:
             libnames = ["epanet22", "epanet22_win32"]
             if "64" in platform.machine():
@@ -69,8 +67,9 @@ class ENepanet_quantum(ENepanet):
                     raise NotImplementedError("Not implemented for Darwin")
                 else:
                     libepanet = resource_filename(
-                        epanet_toolkit, "Linux/lib%s.so" % lib
+                        epanet_quantum_toolkit, "Linux/lib%s.so" % lib
                     )
+                    print(libepanet)
                     self.ENlib = ctypes.cdll.LoadLibrary(libepanet)
                 return
             except Exception as E1:
