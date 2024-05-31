@@ -1,6 +1,7 @@
 """The EPANET simulator.
 """
 
+import os
 import logging
 import wntr.epanet.io
 from wntr.sim.epanet import EpanetSimulator
@@ -56,12 +57,17 @@ class QuantumEpanetSimulator(EpanetSimulator):
 
     """
 
-    def __init__(self, wn, reader=None, result_types=None):  # noqa: D107
+    def __init__(
+        self, wn, reader=None, result_types=None, quantum_solver_script=None
+    ):  # noqa: D107
         EpanetSimulator.__init__(self, wn)
         self.reader = reader
         self.prep_time_before_main_loop = 0.0
         if self.reader is None:
             self.reader = wntr.epanet.io.BinFile(result_types=result_types)
+        self.quantum_solver_script = quantum_solver_script
+        if self.quantum_solver_script is None:
+            self.quantum_solver_script = "/home/nico/QuantumApplicationLab/vitens/EPANET/src/py/quantum_linsolve.py"
 
     def run_sim(
         self,
@@ -107,6 +113,7 @@ class QuantumEpanetSimulator(EpanetSimulator):
         if isinstance(version, str):
             version = float(version)
         inpfile = file_prefix + ".inp"
+        print(inpfile)
         # write_inpfile(
         #     self._wn,
         #     inpfile,
@@ -116,6 +123,15 @@ class QuantumEpanetSimulator(EpanetSimulator):
         self._wn.write_inpfile(
             inpfile, units=self._wn.options.hydraulic.inpfile_units, version=version
         )
+
+        # file to interface the C code with the quantum solvers
+        smatfile = file_prefix + ".smat"
+        qsol_file = file_prefix + ".qsol"
+        with open(file_prefix + ".qinfo", "w") as f:
+            f.write(os.path.abspath(smatfile) + "\n")
+            f.write(os.path.abspath(qsol_file) + "\n")
+            f.write(os.path.abspath(self.quantum_solver_script))
+
         enData = wntr_quantum.epanet.toolkit.ENepanet_quantum(version=version)
         rptfile = file_prefix + ".rpt"
         outfile = file_prefix + ".bin"
