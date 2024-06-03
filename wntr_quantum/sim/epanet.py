@@ -3,8 +3,10 @@
 
 import os
 import logging
+import pickle
 import wntr.epanet.io
 from wntr.sim.epanet import EpanetSimulator
+from quantum_newton_raphson.splu_solver import SPLU_SOLVER
 
 logger = logging.getLogger(__name__)
 
@@ -58,16 +60,21 @@ class QuantumEpanetSimulator(EpanetSimulator):
     """
 
     def __init__(
-        self, wn, reader=None, result_types=None, quantum_solver_script=None
+        self, wn, reader=None, result_types=None, linear_solver=SPLU_SOLVER()
     ):  # noqa: D107
         EpanetSimulator.__init__(self, wn)
         self.reader = reader
         self.prep_time_before_main_loop = 0.0
         if self.reader is None:
             self.reader = wntr.epanet.io.BinFile(result_types=result_types)
-        self.quantum_solver_script = quantum_solver_script
-        if self.quantum_solver_script is None:
-            self.quantum_solver_script = "/home/nico/QuantumApplicationLab/vitens/EPANET/src/py/quantum_linsolve.py"
+        self.linear_solver = linear_solver
+        # self.quantum_solver_script = quantum_solver_script
+        # if self.quantum_solver_script is None:
+        #     self.quantum_solver_script = "/home/nico/QuantumApplicationLab/vitens/EPANET/src/py/quantum_linsolve.py"
+        self.epanet_shared = os.environ["EPANET_QUANTUM"]
+
+        with open(os.path.join(self.epanet_shared, "solver.pckl"), "wb") as fb:
+            pickle.dump(linear_solver, fb)
 
     def run_sim(
         self,
@@ -77,6 +84,7 @@ class QuantumEpanetSimulator(EpanetSimulator):
         hydfile=None,
         version=2.2,
         convergence_error=False,
+        linear_solver=SPLU_SOLVER(),
     ):
         """Run the EPANET simulator.
 
@@ -113,7 +121,7 @@ class QuantumEpanetSimulator(EpanetSimulator):
         if isinstance(version, str):
             version = float(version)
         inpfile = file_prefix + ".inp"
-        print(inpfile)
+
         # write_inpfile(
         #     self._wn,
         #     inpfile,
@@ -124,13 +132,8 @@ class QuantumEpanetSimulator(EpanetSimulator):
             inpfile, units=self._wn.options.hydraulic.inpfile_units, version=version
         )
 
-        # file to interface the C code with the quantum solvers
-        smatfile = file_prefix + ".smat"
-        qsol_file = file_prefix + ".qsol"
-        with open(file_prefix + ".qinfo", "w") as f:
-            f.write(os.path.abspath(smatfile) + "\n")
-            f.write(os.path.abspath(qsol_file) + "\n")
-            f.write(os.path.abspath(self.quantum_solver_script))
+        with open(os.path.join(self.epanet_shared, "solver.pckl"), "wb") as fb:
+            pickle.dump(linear_solver, fb)
 
         enData = wntr_quantum.epanet.toolkit.ENepanet_quantum(version=version)
         rptfile = file_prefix + ".rpt"
