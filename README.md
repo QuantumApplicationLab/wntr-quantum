@@ -20,11 +20,10 @@
 | SonarCloud                         | [![sonarcloud](https://github.com/QuantumApplicationLab/wntr-quantum/actions/workflows/sonarcloud.yml/badge.svg)](https://github.com/QuantumApplicationLab/wntr-quantum/actions/workflows/sonarcloud.yml) |
 | MarkDown link checker              | [![markdown-link-check](https://github.com/QuantumApplicationLab/wntr-quantum/actions/workflows/markdown-link-check.yml/badge.svg)](https://github.com/QuantumApplicationLab/wntr-quantum/actions/workflows/markdown-link-check.yml) | -->
 
-## How to use wntr_quantum
+## WNTR Quantum
 
-A quantum enabled water nework management tool
+WNTR Quantum, builds on the python package WNTR to create a quantum enabled water nework management toolkit.
 
-The project setup is documented in [project_setup.md](project_setup.md). Feel free to remove this document (and/or the link to this document) if you don't need it.
 
 ## Installation
 
@@ -34,6 +33,30 @@ To install wntr_quantum from GitHub repository, do:
 git clone git@github.com:QuantumApplicationLab/wntr-quantum.git
 cd wntr-quantum
 python -m pip install .
+```
+
+## Installation of EPANET Quantum
+
+WNTR Quantum can use a dedicated EPANET solver that allows to offload calculation to quantum linear solvers. This custom EPANET code can be found at : https://github.com/QuantumApplicationLab/EPANET. To install this sover follow the instructions below:
+
+
+```
+# clone EPANET
+git clone https://github.com/QuantumApplicationLab/EPANET
+
+# build EPANET
+cd EPANET
+mkdir build
+cd build 
+cmake .. 
+cmake --build . --config Release
+
+# copy the shared lib
+cp lib/libepanet2.so <path to wntr-quantum>/wntr-quantum/wntr_quantum/epanet/Linux/libepanet22_amd64.so
+
+# export environment variable
+export EPANET_TMP=<path to tmp dir>/.epanet_quantum 
+export EPANET_QUANTUM = <path to EPANET_QUANTUM>
 ```
 
 ## Documentation
