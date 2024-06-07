@@ -59,20 +59,37 @@ class QuantumEpanetSimulator(EpanetSimulator):
 
     """
 
-    def __init__(
+    def __init__(  # noqa: D107
         self, wn, reader=None, result_types=None, linear_solver=SPLU_SOLVER()
-    ):  # noqa: D107
+    ):
         EpanetSimulator.__init__(self, wn)
         self.reader = reader
         self.prep_time_before_main_loop = 0.0
         if self.reader is None:
             self.reader = wntr.epanet.io.BinFile(result_types=result_types)
         self.linear_solver = linear_solver
-        # self.quantum_solver_script = quantum_solver_script
-        # if self.quantum_solver_script is None:
-        #     self.quantum_solver_script = "/home/nico/QuantumApplicationLab/vitens/EPANET/src/py/quantum_linsolve.py"
-        self.epanet_shared = os.environ["EPANET_QUANTUM"]
+        if "EPANET_TMP" not in os.environ:
+            raise ValueError(
+                "Please define the environment variable EPANET_TMP with \
+                             the path to a folder where you have write access"
+            )
+        self.epanet_shared = os.environ["EPANET_TMP"]
 
+        # check if the en var of the source code exists and if the python file is ther
+        if "EPANET_QUANTUM" not in os.environ:
+            raise ValueError(
+                "Please define the environment variable EPANET_QUANTUM with \
+                the path to the root of the EPANET_QUANTUM directory"
+            )
+        else:
+            py_path = os.environ["EPANET_QUANTUM"]
+            py_path = os.path.join(py_path, "src")
+            py_path = os.path.join(py_path, "py")
+            py_path = os.path.join(py_path, "quantum_linsolve.py")
+            if not os.path.isfile(py_path):
+                raise FileNotFoundError("%s file not found" % py_path)
+
+        # dump the solver
         with open(os.path.join(self.epanet_shared, "solver.pckl"), "wb") as fb:
             pickle.dump(linear_solver, fb)
 
@@ -117,6 +134,8 @@ class QuantumEpanetSimulator(EpanetSimulator):
             simulation does not converge. If convergence_error is False, partial results are returned,
             a warning will be issued, and results.error_code will be set to 0
             if the simulation does not converge.  Default = False.
+        linear_solver: BaseLinearSolver (optional)
+            The linear solver we want to use for the NR step.
         """
         if isinstance(version, str):
             version = float(version)
