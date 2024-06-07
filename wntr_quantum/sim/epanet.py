@@ -4,9 +4,12 @@
 import os
 import logging
 import pickle
+import numpy as np
+from dataclasses import dataclass
 import wntr.epanet.io
 from wntr.sim.epanet import EpanetSimulator
 from quantum_newton_raphson.splu_solver import SPLU_SOLVER
+from quantum_newton_raphson.base_solver import BaseSolver, ValidInputFormat
 
 logger = logging.getLogger(__name__)
 
@@ -19,6 +22,36 @@ except ImportError as e:
         "Error importing epanet toolkit while running epanet simulator. "
         "Make sure libepanet is installed and added to path."
     )
+
+
+@dataclass
+class CholeskyResult:
+    """Results of the Sparse LU solver."""
+
+    solution: np.ndarray
+
+
+class CholeskySolver(BaseSolver):
+    """Solve the linear sysem using SPLU.
+
+    Args:
+        BaseSolver (class): base class
+    """
+
+    def __call__(self, A: ValidInputFormat, b: ValidInputFormat) -> CholeskyResult:
+        """Solve the linear system using Cholseky.
+
+        Args:
+            A (ValidInputFormat): input matrix
+            b (ValidInputFormat): input rhs
+
+        Returns:
+            SPLUResult: object containing all the results of the solver
+        """
+        L = np.linalg.cholesky(A)
+        y = np.linalg.solve(L, b)
+        x = np.linalg.solve(L.T, y)
+        return CholeskyResult(x)
 
 
 class QuantumEpanetSimulator(EpanetSimulator):
@@ -60,7 +93,7 @@ class QuantumEpanetSimulator(EpanetSimulator):
     """
 
     def __init__(  # noqa: D107
-        self, wn, reader=None, result_types=None, linear_solver=SPLU_SOLVER()
+        self, wn, reader=None, result_types=None, linear_solver=CholeskySolver()
     ):
         EpanetSimulator.__init__(self, wn)
         self.reader = reader
@@ -101,7 +134,7 @@ class QuantumEpanetSimulator(EpanetSimulator):
         hydfile=None,
         version=2.2,
         convergence_error=False,
-        linear_solver=SPLU_SOLVER(),
+        linear_solver=CholeskySolver(),
     ):
         """Run the EPANET simulator.
 
