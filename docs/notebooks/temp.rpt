@@ -1,4 +1,4 @@
-  Page 1                                    Fri Jun  7 15:54:05 2024
+  Page 1                                    Tue Jun 11 16:35:00 2024
 
   ******************************************************************
   *                           E P A N E T                          *
@@ -7,10 +7,22 @@
   *                         Version 2.3                            *
   ******************************************************************
   
-  Analysis begun Fri Jun  7 15:54:05 2024
+  Analysis begun Tue Jun 11 16:35:00 2024
 
-  WARNING: Negative pressures at 0:00:00 hrs.
    
-  WARNING: Negative pressures at 1:00:00 hrs.
+  Hydraulic Status:
+  -----------------------------------------------------------------------
+     0:00:00: Balanced after 4 trials
+     0:00:00: Reservoir 1 is emptying
    
-  Analysis ended Fri Jun  7 15:54:13 2024
+  Water Quality Mass Balance (mg)
+  ================================
+  Initial Mass:       0.00000e+00
+  Mass Inflow:        0.00000e+00
+  Mass Outflow:       0.00000e+00
+  Mass Reacted:       0.00000e+00
+  Final Mass:         0.00000e+00
+  Mass Ratio:         1.00000
+  ================================
+
+  Analysis ended Tue Jun 11 16:35:14 2024

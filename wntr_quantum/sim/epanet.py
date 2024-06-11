@@ -7,6 +7,7 @@ import pickle
 import numpy as np
 from dataclasses import dataclass
 import wntr.epanet.io
+from wntr.network.io import write_inpfile
 from wntr.sim.epanet import EpanetSimulator
 from quantum_newton_raphson.splu_solver import SPLU_SOLVER
 from quantum_newton_raphson.base_solver import BaseSolver, ValidInputFormat
@@ -48,7 +49,11 @@ class CholeskySolver(BaseSolver):
         Returns:
             SPLUResult: object containing all the results of the solver
         """
+        A = A.todense()
+        print(A)
+        # print(b)
         L = np.linalg.cholesky(A)
+        # print(L @ L.T)
         y = np.linalg.solve(L, b)
         x = np.linalg.solve(L.T, y)
         return CholeskyResult(x)
@@ -174,15 +179,15 @@ class QuantumEpanetSimulator(EpanetSimulator):
             version = float(version)
         inpfile = file_prefix + ".inp"
 
-        # write_inpfile(
-        #     self._wn,
-        #     inpfile,
-        #     units=self._wn.options.hydraulic.inpfile_units,
-        #     version=version,
-        # )
-        self._wn.write_inpfile(
-            inpfile, units=self._wn.options.hydraulic.inpfile_units, version=version
+        write_inpfile(
+            self._wn,
+            inpfile,
+            units=self._wn.options.hydraulic.inpfile_units,
+            version=version,
         )
+        # self._wn.write_inpfile(
+        #     inpfile, units=self._wn.options.hydraulic.inpfile_units, version=version
+        # )
 
         with open(os.path.join(self.epanet_shared, "solver.pckl"), "wb") as fb:
             pickle.dump(linear_solver, fb)
