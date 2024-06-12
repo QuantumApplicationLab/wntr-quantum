@@ -2,6 +2,7 @@
 """
 
 import os
+import sys
 import logging
 import pickle
 import numpy as np
@@ -23,6 +24,18 @@ except ImportError as e:
         "Error importing epanet toolkit while running epanet simulator. "
         "Make sure libepanet is installed and added to path."
     )
+
+
+def load_epanet_matrix():
+    """Load the data contained in an epanet temp file."""
+    epanet_path = os.environ["EPANET_QUANTUM"]
+    epanet_tmp = os.environ["EPANET_TMP"]
+    util_path = os.path.join(epanet_path, "src/py/")
+    # the mock-0.3.1 dir contains testcase.py, testutils.py & mock.py
+    sys.path.append(util_path)
+    from quantum_linsolve import load_json_data
+
+    return load_json_data(os.path.join(epanet_tmp, "smat.json"))
 
 
 @dataclass
@@ -50,7 +63,7 @@ class CholeskySolver(BaseSolver):
             SPLUResult: object containing all the results of the solver
         """
         A = A.todense()
-        print(A)
+        # print(A)
         # print(b)
         L = np.linalg.cholesky(A)
         # print(L @ L.T)
