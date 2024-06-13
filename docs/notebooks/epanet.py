@@ -1,6 +1,8 @@
 import wntr
 import wntr_quantum
 from quantum_newton_raphson.splu_solver import SPLU_SOLVER
+from quantum_newton_raphson.qubo_solver import QUBO_SOLVER
+
 
 # Create a water network model
 inp_file = "networks/Net0.inp"
@@ -10,8 +12,20 @@ wn = wntr.network.WaterNetworkModel(inp_file)
 # Graph the network
 wntr.graphics.plot_network(wn, title=wn.name, node_labels=True)
 
-sim = wntr_quantum.sim.QuantumEpanetSimulator(wn)  # , linear_solver=SPLU_SOLVER())
-results = sim.run_sim()  # linear_solver=SPLU_SOLVER())
+# define a qubo solver
+linear_solver = QUBO_SOLVER(
+    num_qbits=11,
+    num_reads=250,
+    # iterations=5,
+    range=600,
+    offset=250,
+    # temperature=1e4,
+    use_aequbols=False,
+)
+
+sim = wntr_quantum.sim.QuantumEpanetSimulator(wn, linear_solver=linear_solver)
+results = sim.run_sim(linear_solver=linear_solver)
+
 # Plot results on the network
 pressure_at_5hr = results.node["pressure"].loc[0, :]
 wntr.graphics.plot_network(
