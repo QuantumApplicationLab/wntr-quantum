@@ -1,7 +1,7 @@
-import sys
 import os
-import numpy as np
+import sys
 import matplotlib.pyplot as plt
+import numpy as np
 from quantum_newton_raphson.qubo_solver import QUBO_SOLVER
 
 epanet_path = os.environ["EPANET_QUANTUM"]

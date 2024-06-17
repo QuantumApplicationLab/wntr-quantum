@@ -1,12 +1,12 @@
 import logging
 import time
 import warnings
+import matplotlib.pyplot as plt
 import numpy as np
 import scipy.sparse as sp
+from quantum_newton_raphson.splu_solver import SPLU_SOLVER
 from wntr.sim.solvers import NewtonSolver
 from wntr.sim.solvers import SolverStatus
-from quantum_newton_raphson.splu_solver import SPLU_SOLVER
-import matplotlib.pyplot as plt
 
 warnings.filterwarnings(
     "error", "Matrix is exactly singular", sp.linalg.MatrixRankWarning

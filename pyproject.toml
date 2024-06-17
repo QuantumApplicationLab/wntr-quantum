@@ -26,7 +26,7 @@ dependencies = [
     "numpy",
     "scipy",
     "wntr",
-    "quantum_newton_raphson@git+https://github.com/QuantumApplicationLab/QuantumNewtonRaphson",
+    "quantum_newton_raphson@git+https://github.com/QuantumApplicationLab/QuantumNewtonRaphson@refactor_solver",
 ]
 
 description = "A quantum enabled water nework management tool"
