@@ -25,8 +25,8 @@ classifiers = [
 dependencies = [
     "numpy",
     "scipy",
-    'wntr==0.3.1', # bugs for later version ... 
-    # "quantum_newton_raphson <= install manually
+    "wntr",
+    "quantum_newton_raphson@git+https://github.com/QuantumApplicationLab/QuantumNewtonRaphson",
 ]
 
 description = "A quantum enabled water nework management tool"
