@@ -1,15 +1,15 @@
 """Test QuantumNewtonSolver using a very simple aml model."""
 
 import pytest
+from qiskit.circuit.library import RealAmplitudes
+from qiskit.primitives import Estimator
+from qiskit.primitives import Sampler
+from qiskit_algorithms import optimizers as opt
+from quantum_newton_raphson.qubo_solver import QUBO_SOLVER
+from quantum_newton_raphson.vqls_solver import VQLS_SOLVER
+from qubols.encodings import EfficientEncoding
 from wntr.sim import aml
 from wntr_quantum.sim.solvers import QuantumNewtonSolver
-from quantum_newton_raphson.vqls_solver import VQLS_SOLVER
-from quantum_newton_raphson.qubo_solver import QUBO_SOLVER
-from qubols.encodings import EfficientEncoding
-from qiskit.primitives import Estimator, Sampler
-from qiskit.circuit.library import RealAmplitudes
-from qiskit_algorithms import optimizers as opt
-
 
 TOL_RESULTS = 1e-3
 TOL_RESIDUALS = 1e-4
@@ -51,10 +51,10 @@ def test_quantum_newton_solver(linear_solver):
     m.y = aml.Var(2.31)
     m.z = aml.Var(0.19)
     m.w = aml.Var(1.40)
-    m.c1 = aml.Constraint(4.0*m.x + m.y - 5)
-    m.c2 = aml.Constraint(m.x + 3.0*m.y + 2.0*m.z - 8)
-    m.c3 = aml.Constraint(2.0*m.y + 5.0*m.z + m.w - 7)
-    m.c4 = aml.Constraint(m.z + 2.0*m.w - 3)
+    m.c1 = aml.Constraint(4.0 * m.x + m.y - 5)
+    m.c2 = aml.Constraint(m.x + 3.0 * m.y + 2.0 * m.z - 8)
+    m.c3 = aml.Constraint(2.0 * m.y + 5.0 * m.z + m.w - 7)
+    m.c4 = aml.Constraint(m.z + 2.0 * m.w - 3)
     m.set_structure()
 
     # Solve the system

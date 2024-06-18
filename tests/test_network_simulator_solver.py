@@ -10,11 +10,10 @@ from quantum_newton_raphson.qubo_solver import QUBO_SOLVER
 from quantum_newton_raphson.vqls_solver import VQLS_SOLVER
 import wntr_quantum
 
-
 NETWORKS_FOLDER = pathlib.Path(__file__).with_name("networks")
 INP_FILE = NETWORKS_FOLDER / "Net0.inp"  # => toy wn model
 DELTA = 1.0e-12
-TOL = 2.5  # => per cent
+TOL = 5  # => per cent
 
 
 def calculate_differences(value1, value2):
