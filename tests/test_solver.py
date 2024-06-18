@@ -115,14 +115,13 @@ def test_QuantumEpanetSimulator_vqls_solver(classical_EPANET_results):
     compare_results(classical_EPANET_results, vqls_quantum_results)
 
 
-#@pytest.fixture(scope="module")
-#def classical_WNTR_results():
-#    """Get the results from the classical NR solver from WNTR."""
-#    return run_classical_WNTR_simulation()
-#
-#
-#def test_QuantumWNTRSimulator_splu(classical_WNTR_results):
-#    """Checks that the QuantumWNTRSimulator with splu linear solver is equivalent with the classical result."""
-#    splu_classical_results = run_QuantumWNTRSimulator_with_splu()
-#    print(splu_classical_results)
-#    compare_results(classical_WNTR_results, splu_classical_results)
+@pytest.fixture(scope="module")
+def classical_WNTR_results():
+    """Get the results from the classical NR solver from WNTR."""
+    return run_classical_WNTR_simulation()
+
+
+def test_QuantumWNTRSimulator_splu(classical_WNTR_results):
+    """Checks that the QuantumWNTRSimulator with splu linear solver is equivalent with the classical result."""
+    splu_classical_results = run_QuantumWNTRSimulator_with_splu()
+    compare_results(classical_WNTR_results, splu_classical_results)
