@@ -1,4 +1,5 @@
 """Tests for wntr_quantum."""
+
 import pathlib
 import pytest
 import wntr
@@ -10,27 +11,27 @@ from quantum_newton_raphson.vqls_solver import VQLS_SOLVER
 import wntr_quantum
 
 NETWORKS_FOLDER = pathlib.Path(__file__).with_name("networks")
-INP_FILE = NETWORKS_FOLDER / 'Net0.inp'  # => toy wn model
-DELTA = 1.0E-12
+INP_FILE = NETWORKS_FOLDER / "Net0.inp"  # => toy wn model
+DELTA = 1.0e-12
 TOL = 5  # => per cent
 
 
 def calculate_differences(value1, value2):
     """Helper function to calculate percentage difference between classical and quantum results."""
-    return abs(value1 - value2) / abs(value1 + DELTA) <= TOL/100.0
+    return abs(value1 - value2) / abs(value1 + DELTA) <= TOL / 100.0
 
 
 def compare_results(original, new):
     """Helper function that compares the classical and quantum simulation results."""
-    for link in original.link['flowrate'].columns:
-        orig_value = original.link['flowrate'][link].iloc[0]
-        new_value = new.link['flowrate'][link].iloc[0]
+    for link in original.link["flowrate"].columns:
+        orig_value = original.link["flowrate"][link].iloc[0]
+        new_value = new.link["flowrate"][link].iloc[0]
         message = f"Flowrate {link}: {new_value} not within {TOL}% of original {orig_value}"
         assert calculate_differences(orig_value, new_value), message
 
-    for node in original.node['pressure'].columns:
-        orig_value = original.node['pressure'][node].iloc[0]
-        new_value = new.node['pressure'][node].iloc[0]
+    for node in original.node["pressure"].columns:
+        orig_value = original.node["pressure"][node].iloc[0]
+        new_value = new.node["pressure"][node].iloc[0]
         message = f"Pressure {node}: {new_value} not within {TOL}% of original {orig_value}"
         assert calculate_differences(orig_value, new_value), message
 
@@ -79,14 +80,9 @@ def run_QuantumEpanetSimulator_with_qubols():
 def run_QuantumEpanetSimulator_with_vqls():
     """Runs QuantumEpanetSimulator with VQLS solver."""
     wn = wntr.network.WaterNetworkModel(INP_FILE)
-    qc = RealAmplitudes(1, reps=3, entanglement='full')
+    qc = RealAmplitudes(1, reps=3, entanglement="full")
     estimator = Estimator()
-    linear_solver = VQLS_SOLVER(
-        estimator=estimator,
-        ansatz=qc,
-        optimizer=CG(),
-        matrix_decomposition="pauli"
-    )
+    linear_solver = VQLS_SOLVER(estimator=estimator, ansatz=qc, optimizer=CG(), matrix_decomposition="pauli")
     sim = wntr_quantum.sim.QuantumEpanetSimulator(wn, linear_solver=linear_solver)
     return sim.run_sim(linear_solver=linear_solver)
 
