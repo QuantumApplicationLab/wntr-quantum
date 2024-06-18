@@ -64,14 +64,14 @@ def run_QuantumWNTRSimulator_with_splu():
     return sim.run_sim()
 
 
-def run_QuantumEpanetSimulator_with_qubols():
+def run_QuantumEpanetSimulator_with_qubols(use_aequbols):
     """Runs QuantumEpanetSimulator with QUBOLS solver."""
     wn = wntr.network.WaterNetworkModel(INP_FILE)
     linear_solver = QUBO_SOLVER(
         num_qbits=11,
         num_reads=250,
         range=600,
-        use_aequbols=False,
+        use_aequbols=use_aequbols,
     )
     sim = wntr_quantum.sim.QuantumEpanetSimulator(wn, linear_solver=linear_solver)
     return sim.run_sim(linear_solver=linear_solver)
@@ -99,9 +99,10 @@ def test_QuantumEpanetSimulator_cholesky(classical_EPANET_results):
     compare_results(classical_EPANET_results, cholesky_classical_results)
 
 
-def test_QuantumEpanetSimulator_qubols_solver(classical_EPANET_results):
+@pytest.mark.parametrize("use_aequbols", [True, False])
+def test_QuantumEpanetSimulator_qubols_solver(classical_EPANET_results, use_aequbols):
     """Checks that the Quantum EPANET QUBOLS solver works as expected."""
-    qubols_quantum_results = run_QuantumEpanetSimulator_with_qubols()
+    qubols_quantum_results = run_QuantumEpanetSimulator_with_qubols(use_aequbols)
     compare_results(classical_EPANET_results, qubols_quantum_results)
 
 
