@@ -1,4 +1,4 @@
-"""Tests for wntr_quantum."""
+"""Tests WNTR quantum using a small network and different simulators and solvers."""
 
 import pathlib
 import pytest
@@ -9,6 +9,7 @@ from qiskit_algorithms.optimizers import CG
 from quantum_newton_raphson.qubo_solver import QUBO_SOLVER
 from quantum_newton_raphson.vqls_solver import VQLS_SOLVER
 import wntr_quantum
+
 
 NETWORKS_FOLDER = pathlib.Path(__file__).with_name("networks")
 INP_FILE = NETWORKS_FOLDER / "Net0.inp"  # => toy wn model
