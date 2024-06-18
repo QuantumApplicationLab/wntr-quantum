@@ -60,11 +60,10 @@ class ENepanet_quantum(ENepanet):
                     raise NotImplementedError("Not implemented for Windows")
 
                 elif sys.platform in ["darwin"]:
-                    # libepanet = resource_filename(
-                    #     epanet_toolkit, "Darwin/lib%s.dylib" % lib
-                    # )
-                    # self.ENlib = ctypes.cdll.LoadLibrary(libepanet)
-                    raise NotImplementedError("Not implemented for Darwin")
+                    libepanet = resource_filename(
+                        epanet_quantum_toolkit, "Darwin/lib%s.dylib" % lib
+                    )
+                    self.ENlib = ctypes.cdll.LoadLibrary(libepanet)
                 else:
                     libepanet = resource_filename(
                         epanet_quantum_toolkit, "Linux/lib%s.so" % lib
