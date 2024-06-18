@@ -85,7 +85,7 @@ class QuantumNewtonSolver(NewtonSolver):
 
         self._linear_solver = linear_solver
 
-    def solve(self, model, ostream=None):
+    def solve(self, model, ostream=None, debug=False):
         """Parameters
         ----------
         model: wntr.aml.Model
@@ -168,9 +168,10 @@ class QuantumNewtonSolver(NewtonSolver):
                 # print(outer_iter, self._linear_solver, d, r_norm, self.tol)
                 print(d)
 
-                plt.scatter(dref, d)
-                plt.axline((0, 0), slope=1, color="k")
-                plt.show()
+                if debug:
+                    plt.scatter(dref, d)
+                    plt.axline((0, 0), slope=1, color="k")
+                    plt.show()
 
                 # use a fixed point [doesn't work]
                 if self.fixed_point:
