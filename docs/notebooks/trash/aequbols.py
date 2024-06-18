@@ -9,7 +9,7 @@ epanet_tmp = os.environ["EPANET_TMP"]
 util_path = os.path.join(epanet_path, "src/py/")
 # the mock-0.3.1 dir contains testcase.py, testutils.py & mock.py
 sys.path.append(util_path)
-from quantum_linsolve import load_json_data
+from quantum_linsolve import load_json_data  # noqa: E402
 
 A, b = load_json_data(os.path.join(epanet_tmp, "smat.json"))
 
