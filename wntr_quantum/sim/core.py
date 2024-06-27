@@ -5,6 +5,7 @@ import wntr.sim.results
 from quantum_newton_raphson.splu_solver import SPLU_SOLVER
 from wntr.sim.core import WNTRSimulator
 from wntr.sim.core import _Diagnostics
+from wntr.sim.core import _ValveSourceChecker
 from .solvers import QuantumNewtonSolver
 
 logger = logging.getLogger(__name__)
@@ -58,9 +59,11 @@ class QuantumWNTRSimulator(WNTRSimulator):
         backup_solver_options: dict
             Solver options are specified using the following dictionary keys:
 
-            * MAXITER: the maximum number of iterations for each hydraulic solve (each timestep and trial) (default = 3000)
+            * MAXITER: the maximum number of iterations for each hydraulic solve
+                (each timestep and trial) (default = 3000)
             * TOL: tolerance for the hydraulic equations (default = 1e-6)
-            * BT_RHO: the fraction by which the step length is reduced at each iteration of the line search (default = 0.5)
+            * BT_RHO: the fraction by which the step length is reduced at each iteration of the
+                line search (default = 0.5)
             * BT_MAXITER: the maximum number of iterations for each line search (default = 100)
             * BACKTRACKING: whether or not to use a line search (default = True)
             * BT_START_ITER: the newton iteration at which a line search should start being used (default = 2)
@@ -77,11 +80,11 @@ class QuantumWNTRSimulator(WNTRSimulator):
         diagnostics: bool
             If True, then run with diagnostics on
         """
+        self._linear_solver = linear_solver
+
         logger.debug("creating hydraulic model")
         self.mode = self._wn.options.hydraulic.demand_model
-        self._model, self._model_updater = wntr.sim.hydraulics.create_hydraulic_model(
-            wn=self._wn, HW_approx=HW_approx
-        )
+        self._model, self._model_updater = wntr.sim.hydraulics.create_hydraulic_model(wn=self._wn, HW_approx=HW_approx)
 
         if diagnostics:
             diagnostics = _Diagnostics(self._wn, self._model, self.mode, enable=True)
@@ -95,8 +98,10 @@ class QuantumWNTRSimulator(WNTRSimulator):
             backup_solver_options=backup_solver_options,
             convergence_error=convergence_error,
         )
-        self._linear_solver = linear_solver
+
+        self._valve_source_checker = _ValveSourceChecker(self._wn)
         self._get_control_managers()
+        self._register_controls_with_observers()
 
         node_res, link_res = wntr.sim.hydraulics.initialize_results_dict(self._wn)
         results = wntr.sim.results.SimulationResults()
@@ -105,6 +110,8 @@ class QuantumWNTRSimulator(WNTRSimulator):
         results.network_name = self._wn.name
 
         self._initialize_internal_graph()
+        self._change_tracker.set_reference_point("graph")
+        self._change_tracker.set_reference_point("model")
 
         if self._wn.sim_time == 0:
             first_step = True
@@ -122,15 +129,9 @@ class QuantumWNTRSimulator(WNTRSimulator):
         logger.debug("starting simulation")
 
         logger.info(
-            "{0:<10}{1:<10}{2:<10}{3:<15}{4:<15}".format(
-                "Sim Time", "Trial", "Solver", "# isolated", "# isolated"
-            )
+            "{0:<10}{1:<10}{2:<10}{3:<15}{4:<15}".format("Sim Time", "Trial", "Solver", "# isolated", "# isolated")
         )
-        logger.info(
-            "{0:<10}{1:<10}{2:<10}{3:<15}{4:<15}".format(
-                "", "", "# iter", "junctions", "links"
-            )
-        )
+        logger.info("{0:<10}{1:<10}{2:<10}{3:<15}{4:<15}".format("", "", "# iter", "junctions", "links"))
         while True:
             if logger.getEffectiveLevel() <= logging.DEBUG:
                 logger.debug("\n\n")
@@ -143,80 +144,43 @@ class QuantumWNTRSimulator(WNTRSimulator):
                     """
                     wntr.sim.hydraulics.update_tank_heads(self._wn)
                 trial = 0
-                self._compute_next_timestep_and_run_presolve_controls_and_rules(
-                    first_step
-                )
+                self._compute_next_timestep_and_run_presolve_controls_and_rules(first_step)
 
             self._run_feasibility_controls()
 
             # Prepare for solve
             self._update_internal_graph()
-            num_isolated_junctions, num_isolated_links = (
-                self._get_isolated_junctions_and_links()
-            )
+            num_isolated_junctions, num_isolated_links = self._get_isolated_junctions_and_links()
             if not first_step and not resolve:
                 wntr.sim.hydraulics.update_tank_heads(self._wn)
             wntr.sim.hydraulics.update_model_for_controls(
-                self._model, self._wn, self._model_updater, self._presolve_controls
-            )
-            wntr.sim.hydraulics.update_model_for_controls(
-                self._model, self._wn, self._model_updater, self._rules
-            )
-            wntr.sim.hydraulics.update_model_for_controls(
-                self._model, self._wn, self._model_updater, self._feasibility_controls
+                self._model, self._wn, self._model_updater, self._change_tracker
             )
             wntr.sim.models.param.source_head_param(self._model, self._wn)
             wntr.sim.models.param.expected_demand_param(self._model, self._wn)
 
-            diagnostics.run(
-                last_step="presolve controls, rules, and model updates",
-                next_step="solve",
-            )
+            diagnostics.run(last_step="presolve controls, rules, and model updates", next_step="solve")
 
             solver_status, mesg, iter_count = _solver_helper(
                 self._model, self._solver, self._linear_solver, self._solver_options
             )
             if solver_status == 0 and self._backup_solver is not None:
                 solver_status, mesg, iter_count = _solver_helper(
-                    self._model, self._backup_solver, self._backup_solver_options
+                    self._model, self._backup_solver, self._linear_solver, self._backup_solver_options
                 )
             if solver_status == 0:
                 if self._convergence_error:
-                    logger.error(
-                        "Simulation did not converge at time "
-                        + self._get_time()
-                        + ". "
-                        + mesg
-                    )
-                    raise RuntimeError(
-                        "Simulation did not converge at time "
-                        + self._get_time()
-                        + ". "
-                        + mesg
-                    )
-                warnings.warn(
-                    "Simulation did not converge at time "
-                    + self._get_time()
-                    + ". "
-                    + mesg
-                )
-                logger.warning(
-                    "Simulation did not converge at time "
-                    + self._get_time()
-                    + ". "
-                    + mesg
-                )
+                    logger.error("Simulation did not converge at time " + self._get_time() + ". " + mesg)
+                    raise RuntimeError("Simulation did not converge at time " + self._get_time() + ". " + mesg)
+                warnings.warn("Simulation did not converge at time " + self._get_time() + ". " + mesg)
+                logger.warning("Simulation did not converge at time " + self._get_time() + ". " + mesg)
                 results.error_code = wntr.sim.results.ResultsStatus.error
                 diagnostics.run(last_step="solve", next_step="break")
                 break
 
             logger.info(
                 "{0:<10}{1:<10}{2:<10}{3:<15}{4:<15}".format(
-                    self._get_time(),
-                    trial,
-                    iter_count,
-                    num_isolated_junctions,
-                    num_isolated_links,
+                    self._get_time(), trial, iter_count, num_isolated_junctions, num_isolated_links
                 )
             )
 
@@ -224,78 +188,44 @@ class QuantumWNTRSimulator(WNTRSimulator):
             logger.debug("storing results in network")
             wntr.sim.hydraulics.store_results_in_network(self._wn, self._model)
 
-            diagnostics.run(
-                last_step="solve and store results in network",
-                next_step="postsolve controls",
-            )
+            diagnostics.run(last_step="solve and store results in network", next_step="postsolve controls")
 
             self._run_postsolve_controls()
-            if self._postsolve_controls.changes_made():
+            self._run_feasibility_controls()
+            if self._change_tracker.changes_made(ref_point="graph"):
                 resolve = True
                 self._update_internal_graph()
                 wntr.sim.hydraulics.update_model_for_controls(
-                    self._model, self._wn, self._model_updater, self._postsolve_controls
+                    self._model, self._wn, self._model_updater, self._change_tracker
                 )
-                diagnostics.run(
-                    last_step="postsolve controls and model updates",
-                    next_step="solve next trial",
-                )
+                diagnostics.run(last_step="postsolve controls and model updates", next_step="solve next trial")
                 trial += 1
                 if trial > max_trials:
                     if convergence_error:
-                        logger.error(
-                            "Exceeded maximum number of trials at time "
-                            + self._get_time()
-                            + ". "
-                        )
-                        raise RuntimeError(
-                            "Exceeded maximum number of trials at time "
-                            + self._get_time()
-                            + ". "
-                        )
+                        logger.error("Exceeded maximum number of trials at time " + self._get_time() + ". ")
+                        raise RuntimeError("Exceeded maximum number of trials at time " + self._get_time() + ". ")
                     results.error_code = wntr.sim.results.ResultsStatus.error
-                    warnings.warn(
-                        "Exceeded maximum number of trials at time "
-                        + self._get_time()
-                        + ". "
-                    )
-                    logger.warning(
-                        "Exceeded maximum number of trials at time "
-                        + self._get_time()
-                        + ". "
-                    )
+                    warnings.warn("Exceeded maximum number of trials at time " + self._get_time() + ". ")
+                    logger.warning("Exceeded maximum number of trials at time " + self._get_time() + ". ")
                     break
                 continue
 
-            diagnostics.run(
-                last_step="postsolve controls and model updates",
-                next_step="advance time",
-            )
+            diagnostics.run(last_step="postsolve controls and model updates", next_step="advance time")
 
-            logger.debug(
-                "no changes made by postsolve controls; moving to next timestep"
-            )
+            logger.debug("no changes made by postsolve controls; moving to next timestep")
 
             resolve = False
-            if (
-                type(self._report_timestep) == float
-                or type(self._report_timestep) == int
-            ):
+            if isinstance(self._report_timestep, (float, int)):
                 if self._wn.sim_time % self._report_timestep == 0:
                     wntr.sim.hydraulics.save_results(self._wn, node_res, link_res)
-                    if (
-                        len(results.time) > 0
-                        and int(self._wn.sim_time) == results.time[-1]
-                    ):
+                    if len(results.time) > 0 and int(self._wn.sim_time) == results.time[-1]:
                         if int(self._wn.sim_time) != self._wn.sim_time:
                             raise RuntimeError(
                                 "Time steps increments smaller than 1 second are forbidden."
                                 + " Keep time steps as an integer number of seconds."
                             )
                         else:
-                            raise RuntimeError(
-                                "Simulation already solved this timestep"
-                            )
+                            raise RuntimeError("Simulation already solved this timestep")
                     results.time.append(int(self._wn.sim_time))
             elif self._report_timestep.upper() == "ALL":
                 wntr.sim.hydraulics.save_results(self._wn, node_res, link_res)
@@ -312,6 +242,7 @@ class QuantumWNTRSimulator(WNTRSimulator):
                 break
 
         wntr.sim.hydraulics.get_results(self._wn, results, node_res, link_res)
+
         return results
 
 

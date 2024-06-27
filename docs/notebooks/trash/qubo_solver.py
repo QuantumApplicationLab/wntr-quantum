@@ -1,8 +1,6 @@
-import dimod
 import wntr
-import wntr_quantum
 from quantum_newton_raphson.qubo_solver import QUBO_SOLVER
-
+import wntr_quantum
 
 # Create a water network model
 inp_file = "networks/Net0.inp"

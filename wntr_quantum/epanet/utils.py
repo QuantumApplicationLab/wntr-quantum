@@ -1,6 +1,6 @@
-import scipy.sparse as spsp
-import numpy as np
 import json
+import numpy as np
+import scipy.sparse as spsp
 
 
 def json_to_coo(json_data: str) -> spsp.coo_array:

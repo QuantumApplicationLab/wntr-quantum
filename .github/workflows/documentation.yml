@@ -15,11 +15,11 @@ jobs:
     strategy:
       fail-fast: false
     steps:
-      - uses: actions/checkout@v2
-      - name: Set up Python 3.9
-        uses: actions/setup-python@v3
+      - uses: actions/checkout@v4
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
         with:
-          python-version: 3.9
+          python-version: 3.11
       - name: Python info
         shell: bash -e {0}
         run: |
@@ -27,6 +27,7 @@ jobs:
           python --version
       - name: Upgrade pip and install dependencies
         run: |
+          git config --global url."https://${{ secrets.ACCESS_TOKEN }}@github".insteadOf https://github
           python -m pip install --upgrade pip setuptools
           python -m pip install .[dev,publishing]
       - name: Install pandoc using apt
