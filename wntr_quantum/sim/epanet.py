@@ -1,17 +1,16 @@
-"""The EPANET simulator.
-"""
+"""The EPANET simulator."""
 
-import os
-import sys
 import logging
+import os
 import pickle
-import numpy as np
+import sys
 from dataclasses import dataclass
+import numpy as np
 import wntr.epanet.io
+from quantum_newton_raphson.base_solver import BaseSolver
+from quantum_newton_raphson.base_solver import ValidInputFormat
 from wntr.network.io import write_inpfile
 from wntr.sim.epanet import EpanetSimulator
-from quantum_newton_raphson.splu_solver import SPLU_SOLVER
-from quantum_newton_raphson.base_solver import BaseSolver, ValidInputFormat
 
 logger = logging.getLogger(__name__)
 
