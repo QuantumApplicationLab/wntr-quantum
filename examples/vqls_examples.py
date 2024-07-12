@@ -130,7 +130,7 @@ for file in inputs:
         node_size=50,
         title=f"{model_name}: Absolute Percent Error",
         node_labels=False,
-        filename=f"{model_name}_wnm.png"
+        filename=f"{model_name}_wnm_vqls.png"
     )
 
     # checks if the quantum results are within 5% of the classical ones
@@ -145,5 +145,5 @@ for file in inputs:
     plt.ylabel("Quantum EPANET results")
     plt.legend()
     plt.title(f"{model_name}")
-    plt.savefig(f"{model_name}_results.png")
+    plt.savefig(f"{model_name}_results_vqls.png")
     plt.close()
