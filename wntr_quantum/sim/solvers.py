@@ -20,7 +20,7 @@ def get_solution_vector(result) -> np.ndarray:
     """Get the soluion vector from the result dataclass.
 
     Args:
-        result (SPLU_SOLVER | VQLSResult | QUBOResult): linear solver dataclass result
+        result (SPLU_SOLVER | VQLSResult | QUBOResult | HHLresult): linear solver dataclass result
 
     Returns:
         np.ndarray: solution vector
@@ -95,7 +95,10 @@ class QuantumNewtonSolver(NewtonSolver):
         status: SolverStatus
         message: str
         iter_count: int
+        linear_solver_results: list
         """  # noqa: D205
+        linear_solver_results = []
+
         t0 = time.time()
 
         x = model.get_x()
@@ -104,6 +107,7 @@ class QuantumNewtonSolver(NewtonSolver):
                 SolverStatus.converged,
                 "No variables or constraints",
                 0,
+                linear_solver_results,
             )
 
         use_r_ = False
@@ -123,6 +127,7 @@ class QuantumNewtonSolver(NewtonSolver):
                     SolverStatus.error,
                     "Time limit exceeded",
                     outer_iter,
+                    linear_solver_results,
                 )
 
             if use_r_:
@@ -146,6 +151,7 @@ class QuantumNewtonSolver(NewtonSolver):
                     SolverStatus.converged,
                     "Solved Successfully",
                     outer_iter,
+                    linear_solver_results,
                 )
 
             # get Jacobian
@@ -164,7 +170,11 @@ class QuantumNewtonSolver(NewtonSolver):
                 print(dref)
 
                 # get the approxmate of the solution
-                d = -get_solution_vector(self._linear_solver(J, r))
+                approx_result = self._linear_solver(J, r)
+                d = -get_solution_vector(approx_result)
+
+                # save linear solver result
+                linear_solver_results.append(approx_result)
                 # print(outer_iter, self._linear_solver, d, r_norm, self.tol)
                 print(d)
 
@@ -190,6 +200,7 @@ class QuantumNewtonSolver(NewtonSolver):
                     SolverStatus.error,
                     "Jacobian is singular at iteration " + str(outer_iter),
                     outer_iter,
+                    linear_solver_results,
                 )
 
             # Backtracking
@@ -212,6 +223,7 @@ class QuantumNewtonSolver(NewtonSolver):
                         SolverStatus.error,
                         "Line search failed at iteration " + str(outer_iter),
                         outer_iter,
+                        linear_solver_results,
                     )
                 if self.log_progress or ostream is not None:
                     msg = f"iter: {outer_iter:<4d} norm: {new_norm:<10.2e} alpha: {alpha:<10.2e} time: {time.time() - t0:<8.4f}"  # noqa: E501
@@ -227,6 +239,7 @@ class QuantumNewtonSolver(NewtonSolver):
             SolverStatus.error,
             "Reached maximum number of iterations: " + str(outer_iter),
             outer_iter,
+            linear_solver_results,
         )
 
 

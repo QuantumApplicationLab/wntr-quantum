@@ -11,6 +11,7 @@ from quantum_newton_raphson.base_solver import BaseSolver
 from quantum_newton_raphson.base_solver import ValidInputFormat
 from wntr.network.io import write_inpfile
 from wntr.sim.epanet import EpanetSimulator
+from .results import QuantumSimulationResults
 
 logger = logging.getLogger(__name__)
 
@@ -124,6 +125,7 @@ class QuantumEpanetSimulator(EpanetSimulator):
                              the path to a folder where you have write access"
             )
         self.epanet_shared = os.environ["EPANET_TMP"]
+        self.clean_up_epanet_tmp()
 
         # check if the en var of the source code exists and if the python file is ther
         if "EPANET_QUANTUM" not in os.environ:
@@ -142,6 +144,16 @@ class QuantumEpanetSimulator(EpanetSimulator):
         # dump the solver
         with open(os.path.join(self.epanet_shared, "solver.pckl"), "wb") as fb:
             pickle.dump(linear_solver, fb)
+
+    def clean_up_epanet_tmp(self):
+        """Clean up EPANET_TMP if it is not empty."""
+        if os.listdir(self.epanet_shared):
+            files = os.listdir(self.epanet_shared)
+            for file in files:
+                file_path = os.path.join(self.epanet_shared, file)
+                os.remove(file_path)
+        else:
+            logger.info(f"Empty EPANET_TMP: {self.epanet_shared}")
 
     def run_sim(
         self,
@@ -231,5 +243,15 @@ class QuantumEpanetSimulator(EpanetSimulator):
         results = self.reader.read(
             outfile, convergence_error, self._wn.options.hydraulic.headloss == "D-W"
         )
+
+        # convert instance of `SimulationResults` into `QuantumSimulationResults`
+        results = QuantumSimulationResults.from_simulation_results(results)
+
+        # if relevant, save linear solver intermediate results
+        sol_info = os.path.join(self.epanet_shared, "sol_info.pckl")
+        if os.path.isfile(sol_info):
+            with open(sol_info, "rb") as f:
+                linear_solver_results = pickle.load(f)
+            results.linear_solver_results = linear_solver_results
 
         return results
