@@ -1,16 +1,12 @@
-import numpy as np
 import os
 import matplotlib.pyplot as plt
-
+import numpy as np
 import wntr
-import wntr_quantum
-
-from quantum_newton_raphson.qubo_solver import QUBO_SOLVER
-from qubols.encodings import RangedEfficientEncoding
-
 from qiskit.circuit.library import RealAmplitudes
 from qiskit.primitives import Estimator
-from qiskit_algorithms import optimizers as opt
+from quantum_newton_raphson.qubo_solver import QUBO_SOLVER
+from qubols.encodings import RangedEfficientEncoding
+import wntr_quantum
 
 
 def get_ape_from_pd_series(quantum_pd_series, classical_pd_series):
@@ -21,16 +17,14 @@ def get_ape_from_pd_series(quantum_pd_series, classical_pd_series):
 
 
 def compare_results(classical_result, quantum_result):
-    """
-    Helper function that compares the classical and quantum simulation results.
-    """
+    """Helper function that compares the classical and quantum simulation results."""
     TOL = 10  # => per cent
     DELTA = 1.0e-12
     classical_data = []
     quantum_data = []
 
     def check_ape(classical_value, quantum_value):
-        """Helper function to check if the absolute percentage error between classical and quantum results is within TOL."""
+        """Checks if the absolute percentage error between classical and quantum results is within TOL."""
         ape = abs(quantum_value - classical_value) * 100.0 / abs(classical_value + DELTA)
         is_close_to_classical = ape <= TOL
         if is_close_to_classical:
@@ -141,7 +135,14 @@ for file in inputs:
     # plot all data
     plt.close()
     plt.scatter(classical_data[:n_pipes], quantum_data[:n_pipes], label="Flowrates", color="blue", marker="o")
-    plt.scatter(classical_data[n_pipes:], quantum_data[n_pipes:], label="Pressures", color="red", marker="s", facecolors='none')
+    plt.scatter(
+        classical_data[n_pipes:],
+        quantum_data[n_pipes:],
+        label="Pressures",
+        color="red",
+        marker="s",
+        facecolors='none',
+    )
     plt.axline((0, 0), slope=1, linestyle="--", color="gray", label="")
     plt.xlabel("Classical EPANET results")
     plt.ylabel("Quantum EPANET results")
