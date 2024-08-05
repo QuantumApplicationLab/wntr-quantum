@@ -1,3 +1,4 @@
+import numpy as np
 from wntr.sim import aml
 from wntr.sim.models import constants
 from wntr.sim.models import constraint
@@ -7,6 +8,8 @@ from wntr.sim.models.utils import ModelUpdater
 from .chezy_manning import approx_chezy_manning_headloss_constraint
 from .chezy_manning import chezy_manning_constants
 from .chezy_manning import cm_resistance_param
+from .chezy_manning import get_chezy_manning_matrix
+from .chezy_manning import get_mass_balance_constraint
 
 
 class NetworkDesign(object):
@@ -20,6 +23,7 @@ class NetworkDesign(object):
         """
         self.wn = wn
         self.m, self.model_updater = self.create_cm_model()
+        self.matrices = self.initialize_matrices()
 
     def create_cm_model(self):
         """Create the aml.
@@ -93,3 +97,23 @@ class NetworkDesign(object):
         # TODO: Document that changing a curve with controls does not do anything; you have to change the pump_curve_name attribute on the pump
 
         return m, model_updater
+
+    def initialize_matrices(self):
+        """_summary_."""
+        num_equations = len(list(self.m.cons())) + 1
+        num_continuous_variables = len(list(self.m.vars()))
+        num_discrete_variables = len(self.m.cm_resistance)
+
+        num_variables = num_continuous_variables + num_discrete_variables
+
+        # must transform that to coo
+        P0 = np.zeros((num_equations, 1))
+        P1 = np.zeros((num_equations, num_variables))
+        P2 = np.zeros((num_equations, num_variables, num_variables))
+        P3 = np.zeros((num_equations, num_variables, num_variables, num_variables))
+
+        matrices = (P0, P1, P2, P3)
+        matrices = get_mass_balance_constraint(self.m, self.wn, matrices)
+        matrices = get_chezy_manning_matrix(self.m, self.wn, matrices)
+
+        return matrices
