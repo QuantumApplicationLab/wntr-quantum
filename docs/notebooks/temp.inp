@@ -1,6 +1,6 @@
 ; Filename: networks/Net3.inp
 ; WNTR: 1.1.0
-; Created: 2024-07-17 17:39:52
+; Created: 2024-07-23 17:37:24
 [TITLE]
 EPANET Example Network 3
 Example showing how the percent of Lake water in a dual-source
@@ -343,7 +343,7 @@ DEMAND CHARGE          0.0000
 ;Tank ID             Model Fraction
 
 [TIMES]
-DURATION             00:00:00
+DURATION             168:00:00
 HYDRAULIC TIMESTEP   01:00:00
 QUALITY TIMESTEP     00:05:00
 PATTERN TIMESTEP     01:00:00
