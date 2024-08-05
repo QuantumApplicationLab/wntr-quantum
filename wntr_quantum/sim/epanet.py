@@ -125,7 +125,7 @@ class QuantumEpanetSimulator(EpanetSimulator):
                              the path to a folder where you have write access"
             )
         self.epanet_shared = os.environ["EPANET_TMP"]
-        self.clean_up_epanet_tmp()
+        self.clean_up_quantum_epanet_tmp()
 
         # check if the en var of the source code exists and if the python file is ther
         if "EPANET_QUANTUM" not in os.environ:
@@ -145,15 +145,22 @@ class QuantumEpanetSimulator(EpanetSimulator):
         with open(os.path.join(self.epanet_shared, "solver.pckl"), "wb") as fb:
             pickle.dump(linear_solver, fb)
 
-    def clean_up_epanet_tmp(self):
+    def clean_up_quantum_epanet_tmp(self):
         """Clean up EPANET_TMP if it is not empty."""
-        if os.listdir(self.epanet_shared):
+        try:
             files = os.listdir(self.epanet_shared)
-            for file in files:
-                file_path = os.path.join(self.epanet_shared, file)
-                os.remove(file_path)
-        else:
-            logger.info(f"Empty EPANET_TMP: {self.epanet_shared}")
+            if files:
+                for file in files:
+                    file_path = os.path.join(self.epanet_shared, file)
+                    if os.path.isfile(file_path):
+                        os.remove(file_path)
+                        logger.info("Removed file: %s", file_path)
+                    else:
+                        logger.info("Skipped directory: %s", file_path)
+            else:
+                logger.info("Empty EPANET_TMP: %s", self.epanet_shared)
+        except Exception as err:
+            logger.error("Error while cleaning up EPANET_TMP: %s", str(err))
 
     def run_sim(
         self,
