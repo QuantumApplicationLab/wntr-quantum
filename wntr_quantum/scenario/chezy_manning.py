@@ -10,10 +10,45 @@ def chezy_manning_constants(m):
     Args:
         m (_type_): _description_
     """
-    m.cm_exp = 2
-    m.cm_minor_exp = 2
-    m.cm_k = 4.66
-    m.cm_diameter_exp = -5.33
+    # m.cm_exp = 2
+    # m.cm_minor_exp = 2
+    # m.cm_k = 4.66
+    # m.cm_diameter_exp = -5.33
+
+    m.cm_exp = 1
+    m.cm_minor_exp = 1
+    m.cm_k = 1
+    m.cm_diameter_exp = -1
+
+
+def cm_resistance_prefactor(k, roughness, exp, diameter, diameter_exp):
+    """_summary_.
+
+    Args:
+        k (_type_): _description_
+        roughness (_type_): _description_
+        exp (_type_): _description_
+        diameter (_type_): _description_
+        diameter_exp (_type_): _description_
+    """
+    return k * roughness ** (exp) * diameter ** (diameter_exp)
+
+
+def cm_resistance_value(k, roughness, exp, diameter, diameter_exp, length):
+    """_summary_.
+
+    Args:
+        k (_type_): _description_
+        roughness (_type_): _description_
+        exp (_type_): _description_
+        diameter (_type_): _description_
+        diameter_exp (_type_): _description_
+        length (_type_): _description_
+
+    Returns:
+        _type_: _description_
+    """
+    return cm_resistance_prefactor(k, roughness, exp, diameter, diameter_exp) * length
 
 
 class cm_resistance_param(Definition):  # noqa: D101
@@ -37,11 +72,13 @@ class cm_resistance_param(Definition):  # noqa: D101
 
         for link_name in index_over:
             link = wn.get_link(link_name)
-            value = (
-                m.cm_k
-                * link.roughness ** (m.cm_exp)
-                * link.diameter ** (m.cm_diameter_exp)
-                * link.length
+            value = cm_resistance_value(
+                m.cm_k,
+                link.roughness,
+                m.cm_exp,
+                link.diameter,
+                m.cm_diameter_exp,
+                link.length,
             )
             if link_name in m.cm_resistance:
                 m.cm_resistance[link_name].value = value
@@ -176,11 +213,9 @@ def get_chezy_manning_matrix(m, wn, matrices):  # noqa: D417
         start_node = wn.get_node(start_node_name)
         end_node = wn.get_node(end_node_name)
 
-        start_node_index = var_names.index(start_node.name)
-        end_node_index = var_names.index(end_node.name)
-
         if isinstance(start_node, wntr.network.Junction):
             start_h = m.head[start_node_name]
+            start_node_index = var_names.index(start_h.name)
             P1[ieq, start_node_index] = 1
         else:
             start_h = m.source_head[start_node_name]
@@ -188,6 +223,7 @@ def get_chezy_manning_matrix(m, wn, matrices):  # noqa: D417
 
         if isinstance(end_node, wntr.network.Junction):
             end_h = m.head[end_node_name]
+            end_node_index = var_names.index(end_h.name)
             P1[ieq, end_node_index] = -1
         else:
             end_h = m.source_head[end_node_name]
@@ -196,6 +232,6 @@ def get_chezy_manning_matrix(m, wn, matrices):  # noqa: D417
         k = m.cm_resistance[link_name]
         cm_res_index = var_names.index(k.name)
 
-        P3[ieq, flow_index, flow_index, cm_res_index] = -1
+        P3[ieq, flow_index, flow_index, cm_res_index] = -link.length
 
     return (P0, P1, P2, P3)
