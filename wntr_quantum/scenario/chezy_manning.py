@@ -155,6 +155,98 @@ def get_mass_balance_constraint(m, wn, matrices):  # noqa: D417
     index_over: list of str
         list of junction names; default is all junctions in wn
     """
+    P0, P1, P2 = matrices
+
+    continuous_var_name = [v.name for v in list(m.vars())]
+    discrete_var_name = [v.name for k, v in m.cm_resistance.items()]
+    var_names = continuous_var_name + discrete_var_name
+
+    index_over = wn.junction_name_list
+
+    for ieq, node_name in enumerate(index_over):
+
+        node = wn.get_node(node_name)
+        if not node._is_isolated:
+            P0[ieq, 0] += m.expected_demand[node_name].value
+
+            for link_name in wn.get_links_for_node(node_name, flag="INLET"):
+                node_index = var_names.index(m.flow[link_name].name)
+                P1[ieq, node_index] -= 1
+
+            for link_name in wn.get_links_for_node(node_name, flag="OUTLET"):
+                node_index = var_names.index(m.flow[link_name].name)
+                P1[ieq, node_index] += 1
+
+    return P0, P1, P2
+
+
+def get_chezy_manning_matrix(m, wn, matrices):  # noqa: D417
+    """Adds a mass balance to the model for the specified junctions.
+
+    Parameters
+    ----------
+    m: wntr.aml.aml.aml.Model
+    wn: wntr.network.model.WaterNetworkModel
+    updater: ModelUpdater
+    index_over: list of str
+        list of pipe names; default is all pipes in wn
+    """
+    P0, P1, P2 = matrices
+
+    continuous_var_name = [v.name for v in list(m.vars())]
+    discrete_var_name = [v.name for k, v in m.cm_resistance.items()]
+
+    var_names = continuous_var_name + discrete_var_name
+
+    index_over = wn.pipe_name_list
+
+    for ieq0, link_name in enumerate(index_over):
+
+        ieq = ieq0 + len(wn.junction_name_list)
+        link = wn.get_link(link_name)
+        f = m.flow[link_name]
+        flow_index = var_names.index(f.name)
+
+        start_node_name = link.start_node_name
+        end_node_name = link.end_node_name
+
+        start_node = wn.get_node(start_node_name)
+        end_node = wn.get_node(end_node_name)
+
+        if isinstance(start_node, wntr.network.Junction):
+            start_h = m.head[start_node_name]
+            start_node_index = var_names.index(start_h.name)
+            P1[ieq, start_node_index] = 1
+        else:
+            start_h = m.source_head[start_node_name]
+            P0[ieq, 0] += start_h.value
+
+        if isinstance(end_node, wntr.network.Junction):
+            end_h = m.head[end_node_name]
+            end_node_index = var_names.index(end_h.name)
+            P1[ieq, end_node_index] = -1
+        else:
+            end_h = m.source_head[end_node_name]
+            P0[ieq, 0] -= end_h.value
+
+        k = m.cm_resistance[link_name]
+
+        P2[ieq, flow_index, flow_index] = -k.value
+
+    return (P0, P1, P2)
+
+
+def get_mass_balance_constraint_design(m, wn, matrices):  # noqa: D417
+    """Adds a mass balance to the model for the specified junctions.
+
+    Parameters
+    ----------
+    m: wntr.aml.aml.aml.Model
+    wn: wntr.network.model.WaterNetworkModel
+    updater: ModelUpdater
+    index_over: list of str
+        list of junction names; default is all junctions in wn
+    """
     P0, P1, P2, P3 = matrices
 
     continuous_var_name = [v.name for v in list(m.vars())]
@@ -180,7 +272,7 @@ def get_mass_balance_constraint(m, wn, matrices):  # noqa: D417
     return P0, P1, P2, P3
 
 
-def get_chezy_manning_matrix(m, wn, matrices):  # noqa: D417
+def get_chezy_manning_matrix_design(m, wn, matrices):  # noqa: D417
     """Adds a mass balance to the model for the specified junctions.
 
     Parameters
