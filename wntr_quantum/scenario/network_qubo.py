@@ -63,7 +63,7 @@ class Network(object):
         p2 = P2.sum(-1)
         return p0 + p1 @ input + (p2 @ (input * input))
 
-    def classical_solutions(self):
+    def classical_solutions(self, max_iter=100, tol=1e-10):
         """generates the classical solution."""
 
         P0, P1, P2 = self.matrices
@@ -81,7 +81,7 @@ class Network(object):
             return p0 + p1 @ input + (p2 @ (input * input))
 
         initial_point = np.random.rand(num_vars)
-        res = newton_raphson(func, initial_point)
+        res = newton_raphson(func, initial_point, max_iter=max_iter, tol=tol)
         assert np.allclose(func(res.solution), 0)
         return res.solution
 

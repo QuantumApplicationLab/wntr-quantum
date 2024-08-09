@@ -3,25 +3,25 @@ shamir -- Bragalli, D'Ambrosio, Lee, Lodi, Toth (2008)
 
 [JUNCTIONS]
 ;ID              	Elev        	Demand      	Pattern         
- 2               	150.00      	500       	                	; 
- 3               	160.00      	1000      	                	; 
- 4               	155.00      	500       	                	; 
- 5               	150.00      	1000       	                	; 
+ 2               	150.00      	27.77     	                	; 
+ 3               	160.00      	27.77     	                	; 
+ 4               	155.00      	33.33     	                	; 
+ 5               	150.00      	75.00      	                	; 
 
 [RESERVOIRS]
 ;ID              	Head        	Pattern         
- 1               	16.00      	                	; 
+ 1               	210.00      	                	; 
 
 [TANKS]
 ;ID              	Elevation   	InitLevel   	MinLevel    	MaxLevel    	Diameter    	MinVol      	VolCurve        	Overflow
 
 [PIPES]
 ;ID              	Node1           	Node2           	Length      	Diameter    	Roughness   	MinorLoss   	Status
- 1               	1               	2               	1     	        1000      	1      	0.00        	Open  	; 
- 2               	2               	3               	1     	        1000      	1      	0.00        	Open  	; 
- 3               	2               	4               	1     	        1000      	1      	0.00        	Open  	; 
- 4               	4               	5               	1     	        1000      	1      	0.00        	Open  	; 
- 5               	3               	5               	1     	        1000      	1      	0.00        	Open  	; 
+ 1               	1               	2               	1000  	        457.20            	0.015      	0.00        	Open  	; 
+ 2               	2               	3               	1000  	        203                	0.015      	0.00        	Open  	; 
+ 3               	2               	4               	1000  	        457                	0.015      	0.00        	Open  	; 
+ 4               	4               	5               	1000  	        153                	0.015      	0.00        	Open  	; 
+ 5               	3               	5               	1000  	        153                	0.015      	0.00        	Open  	; 
 
 
 [PUMPS]

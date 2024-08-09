@@ -10,15 +10,20 @@ def chezy_manning_constants(m):
     Args:
         m (_type_): _description_
     """
+    m.cm_exp = 2
+    m.cm_minor_exp = 2
+    m.cm_diameter_exp = -5.33
+    m.cm_k = 21.000  # 4.66 * (3.28) ** m.cm_diameter_exp
+
     # m.cm_exp = 2
     # m.cm_minor_exp = 2
-    # m.cm_k = 4.66
-    # m.cm_diameter_exp = -5.33
+    # m.cm_diameter_exp = -4.8
+    # m.cm_k = 10.67  # 4.66 * (3.28) ** m.cm_diameter_exp
 
-    m.cm_exp = 1
-    m.cm_minor_exp = 1
-    m.cm_k = 1
-    m.cm_diameter_exp = -1
+    # m.cm_exp = 1
+    # m.cm_minor_exp = 1
+    # m.cm_k = 1
+    # m.cm_diameter_exp = -1
 
 
 def cm_resistance_prefactor(k, roughness, exp, diameter, diameter_exp):
