@@ -16,8 +16,8 @@ File obtained via Mario of a 2 node sysem
 
 [PIPES]
 ;ID              	Node1           	Node2           	Length      	Diameter    	Roughness   	MinorLoss   	Status
- P1              	R1              	J1              	100         	250         	0.05        	0           	Open  	;
- P2              	J1              	D1              	1000        	200         	0.04        	0           	Open  	;
+ P1              	R1              	J1              	1000        	250         	0.05        	0           	Open  	;
+ P2              	J1              	D1              	1000        	250         	0.05        	0           	Open  	;
 
 [PUMPS]
 ;ID              	Node1           	Node2           	Parameters
@@ -94,8 +94,8 @@ File obtained via Mario of a 2 node sysem
  Headloss           	D-W
  Specific Gravity   	1
  Viscosity          	1
- Trials             	40
- Accuracy           	0.1
+ Trials             	50
+ Accuracy           	0.001
  CHECKFREQ          	2
  MAXCHECK           	10
  DAMPLIMIT          	0

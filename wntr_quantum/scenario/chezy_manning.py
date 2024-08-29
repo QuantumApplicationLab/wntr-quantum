@@ -149,42 +149,6 @@ class approx_chezy_manning_headloss_constraint(Definition):  # noqa: D101
             )
 
 
-def get_mass_balance_constraint(m, wn, matrices):  # noqa: D417
-    """Adds a mass balance to the model for the specified junctions.
-
-    Parameters
-    ----------
-    m: wntr.aml.aml.aml.Model
-    wn: wntr.network.model.WaterNetworkModel
-    updater: ModelUpdater
-    index_over: list of str
-        list of junction names; default is all junctions in wn
-    """
-    P0, P1, P2 = matrices
-
-    continuous_var_name = [v.name for v in list(m.vars())]
-    discrete_var_name = [v.name for k, v in m.cm_resistance.items()]
-    var_names = continuous_var_name + discrete_var_name
-
-    index_over = wn.junction_name_list
-
-    for ieq, node_name in enumerate(index_over):
-
-        node = wn.get_node(node_name)
-        if not node._is_isolated:
-            P0[ieq, 0] += m.expected_demand[node_name].value
-
-            for link_name in wn.get_links_for_node(node_name, flag="INLET"):
-                node_index = var_names.index(m.flow[link_name].name)
-                P1[ieq, node_index] -= 1
-
-            for link_name in wn.get_links_for_node(node_name, flag="OUTLET"):
-                node_index = var_names.index(m.flow[link_name].name)
-                P1[ieq, node_index] += 1
-
-    return P0, P1, P2
-
-
 def get_chezy_manning_matrix(m, wn, matrices):  # noqa: D417
     """Adds a mass balance to the model for the specified junctions.
 
@@ -239,42 +203,6 @@ def get_chezy_manning_matrix(m, wn, matrices):  # noqa: D417
         P2[ieq, flow_index, flow_index] = -k.value
 
     return (P0, P1, P2)
-
-
-def get_mass_balance_constraint_design(m, wn, matrices):  # noqa: D417
-    """Adds a mass balance to the model for the specified junctions.
-
-    Parameters
-    ----------
-    m: wntr.aml.aml.aml.Model
-    wn: wntr.network.model.WaterNetworkModel
-    updater: ModelUpdater
-    index_over: list of str
-        list of junction names; default is all junctions in wn
-    """
-    P0, P1, P2, P3 = matrices
-
-    continuous_var_name = [v.name for v in list(m.vars())]
-    discrete_var_name = [v.name for k, v in m.cm_resistance.items()]
-    var_names = continuous_var_name + discrete_var_name
-
-    index_over = wn.junction_name_list
-
-    for ieq, node_name in enumerate(index_over):
-
-        node = wn.get_node(node_name)
-        if not node._is_isolated:
-            P0[ieq, 0] += m.expected_demand[node_name].value
-
-            for link_name in wn.get_links_for_node(node_name, flag="INLET"):
-                node_index = var_names.index(m.flow[link_name].name)
-                P1[ieq, node_index] -= 1
-
-            for link_name in wn.get_links_for_node(node_name, flag="OUTLET"):
-                node_index = var_names.index(m.flow[link_name].name)
-                P1[ieq, node_index] += 1
-
-    return P0, P1, P2, P3
 
 
 def get_chezy_manning_matrix_design(m, wn, matrices):  # noqa: D417
