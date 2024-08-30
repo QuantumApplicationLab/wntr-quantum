@@ -2,19 +2,16 @@ import logging
 import warnings
 import wntr.sim.hydraulics
 import wntr.sim.results
-
 from wntr.sim.core import WNTRSimulator
 from wntr.sim.core import _Diagnostics
 from wntr.sim.core import _ValveSourceChecker
-
 from .hydraulics import create_hydraulic_model
-
-from .qubo_polynomial_solver import QuboPolynomialSolver
+from .solvers.qubo_polynomial_solver import QuboPolynomialSolver
 
 logger = logging.getLogger(__name__)
 
 
-class FullQuantumSimulator(WNTRSimulator):
+class FullQuboPolynomialSimulator(WNTRSimulator):
     """The quantum enabled NR slver."""
 
     def __init__(self, wn, flow_encoding, head_encoding):  # noqa: D417
@@ -37,7 +34,7 @@ class FullQuantumSimulator(WNTRSimulator):
         self._head_encoding = head_encoding
         self._flow_encoding = flow_encoding
         self._solver = QuboPolynomialSolver(
-            self.wn, flow_encoding=flow_encoding, head_encoding=head_encoding
+            self._wn, flow_encoding=flow_encoding, head_encoding=head_encoding
         )
 
     def run_sim(

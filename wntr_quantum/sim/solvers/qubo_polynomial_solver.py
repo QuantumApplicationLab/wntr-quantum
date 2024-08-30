@@ -11,22 +11,10 @@ from wntr.epanet.util import FlowUnits
 from wntr.epanet.util import HydParam
 from wntr.epanet.util import from_si
 from wntr.epanet.util import to_si
-from wntr.sim import aml
-from wntr.sim.models import constants
-from wntr.sim.models import constraint
-from wntr.sim.models import param
-from wntr.sim.models import var
-from wntr.sim.models.utils import ModelUpdater
 from wntr.sim.solvers import SolverStatus
-from .models.chezy_manning import approx_chezy_manning_headloss_constraint
-from .models.chezy_manning import chezy_manning_constants
-from .models.chezy_manning import cm_resistance_param
-from .models.chezy_manning import get_chezy_manning_matrix
-from .models.darcy_weisbach import approx_darcy_weisbach_headloss_constraint
-from .models.darcy_weisbach import darcy_weisbach_constants
-from .models.darcy_weisbach import dw_resistance_param
-from .models.darcy_weisbach import get_darcy_weisbach_matrix
-from .models.mass_balance import get_mass_balance_constraint
+from ..models.chezy_manning import get_chezy_manning_matrix
+from ..models.darcy_weisbach import get_darcy_weisbach_matrix
+from ..models.mass_balance import get_mass_balance_matrix
 
 
 class QuboPolynomialSolver(object):
@@ -52,16 +40,9 @@ class QuboPolynomialSolver(object):
         self.head_encoding = head_encoding
         self.sol_vect_flows = SolutionVector(wn.num_pipes, encoding=flow_encoding)
         self.sol_vect_heads = SolutionVector(wn.num_junctions, encoding=head_encoding)
-
-        # create the aml
-        self.m, self.model_updater = self.create_model()
-
         self.mixed_solution_vector = MixedSolutionVector(
             [self.sol_vect_flows, self.sol_vect_heads]
         )
-
-        # initialze the matrices of the polynomial equation
-        self.matrices = self.initialize_matrices()
 
     def verify_encoding(self):
         """Print info regarding the encodings."""
@@ -166,94 +147,10 @@ class QuboPolynomialSolver(object):
         print("Residue ref   : ", res_ref)
         print("Delta Residue :", res_sol - res_ref)
 
-    def create_model(self):
-        """Create the aml.
-
-        Args:
-            wn (_type_): _description_
-
-        Raises:
-            NotImplementedError: _description_
-            NotImplementedError: _description_
-            ValueError: _description_
-            ValueError: _description_
-            NotImplementedError: _description_
-            NotImplementedError: _description_
-
-        Returns:
-            _type_: _description_
-        """
-        if self.wn.options.hydraulic.demand_model in ["PDD", "PDA"]:
-            raise ValueError("Pressure Driven simulations not supported")
-
-        if self.wn.options.hydraulic.headloss == "C-M":
-            import_constants = chezy_manning_constants
-            resistance_param = cm_resistance_param
-            approx_head_loss_constraint = approx_chezy_manning_headloss_constraint
-        elif self.wn.options.hydraulic.headloss == "D-W":
-            import_constants = darcy_weisbach_constants
-            resistance_param = dw_resistance_param
-            approx_head_loss_constraint = approx_darcy_weisbach_headloss_constraint
-        else:
-            raise ValueError(
-                "QUBO Hydraulic Simulations only supported for C-M and D-W simulations"
-            )
-
-        m = aml.Model()
-        model_updater = ModelUpdater()
-
-        # Global constants
-        import_constants(m)
-        constants.head_pump_constants(m)
-        constants.leak_constants(m)
-        constants.pdd_constants(m)
-
-        param.source_head_param(m, self.wn)
-        param.expected_demand_param(m, self.wn)
-
-        param.leak_coeff_param.build(m, self.wn, model_updater)
-        param.leak_area_param.build(m, self.wn, model_updater)
-        param.leak_poly_coeffs_param.build(m, self.wn, model_updater)
-        param.elevation_param.build(m, self.wn, model_updater)
-
-        resistance_param.build(m, self.wn, model_updater)
-        param.minor_loss_param.build(m, self.wn, model_updater)
-        param.tcv_resistance_param.build(m, self.wn, model_updater)
-        param.pump_power_param.build(m, self.wn, model_updater)
-        param.valve_setting_param.build(m, self.wn, model_updater)
-
-        var.flow_var(m, self.wn)
-        var.head_var(m, self.wn)
-        var.leak_rate_var(m, self.wn)
-
-        constraint.mass_balance_constraint.build(m, self.wn, model_updater)
-
-        approx_head_loss_constraint.build(m, self.wn, model_updater)
-
-        constraint.head_pump_headloss_constraint.build(m, self.wn, model_updater)
-        constraint.power_pump_headloss_constraint.build(m, self.wn, model_updater)
-        constraint.prv_headloss_constraint.build(m, self.wn, model_updater)
-        constraint.psv_headloss_constraint.build(m, self.wn, model_updater)
-        constraint.tcv_headloss_constraint.build(m, self.wn, model_updater)
-        constraint.fcv_headloss_constraint.build(m, self.wn, model_updater)
-        if len(self.wn.pbv_name_list) > 0:
-            raise NotImplementedError(
-                "PBV valves are not currently supported in the WNTRSimulator"
-            )
-        if len(self.wn.gpv_name_list) > 0:
-            raise NotImplementedError(
-                "GPV valves are not currently supported in the WNTRSimulator"
-            )
-        constraint.leak_constraint.build(m, self.wn, model_updater)
-
-        # TODO: Document that changing a curve with controls does not do anything; you have to change the pump_curve_name attribute on the pump
-
-        return m, model_updater
-
-    def initialize_matrices(self):
+    def initialize_matrices(self, model):
         """Initilize the matrix for the QUBO definition."""
-        num_equations = len(list(self.m.cons()))
-        num_variables = len(list(self.m.vars()))
+        num_equations = len(list(model.cons()))
+        num_variables = len(list(model.vars()))
 
         # must transform that to coo
         P0 = np.zeros((num_equations, 1))
@@ -264,13 +161,13 @@ class QuboPolynomialSolver(object):
 
         # get the mass balance and headloss matrix contributions
         if self.wn.options.hydraulic.headloss == "C-M":
-            matrices = get_mass_balance_constraint(self.m, self.wn, matrices)
-            matrices = get_chezy_manning_matrix(self.m, self.wn, matrices)
+            matrices = get_mass_balance_matrix(model, self.wn, matrices)
+            matrices = get_chezy_manning_matrix(model, self.wn, matrices)
         elif self.wn.options.hydraulic.headloss == "D-W":
-            matrices = get_mass_balance_constraint(
-                self.m, self.wn, matrices, convert_to_us_unit=True
+            matrices = get_mass_balance_matrix(
+                model, self.wn, matrices, convert_to_us_unit=True
             )
-            matrices = get_darcy_weisbach_matrix(self.m, self.wn, matrices)
+            matrices = get_darcy_weisbach_matrix(model, self.wn, matrices)
         else:
             raise ValueError("Calculation only possible with C-M or D-W")
         return matrices
@@ -317,19 +214,30 @@ class QuboPolynomialSolver(object):
             new_sol[ih] = from_si(FlowUnits.CFS, solution[ih], HydParam.Length)
         return new_sol
 
-    def solve(self, model, strength=1e6, num_reads=1e4, **options):
+    @staticmethod
+    def load_data_in_model(model, data):
+        """Loads some data in the model.
+
+        Args:
+            model (_type_): _description_
+            data (_type_): _description_
+        """
+        for iv, v in enumerate(model.vars()):
+            v.value = data[iv]
+
+    def solve(self, model, strength=1e6, num_reads=10000, **options):
         """Solve the hydraulics equations."""
-        self.m = model
-        self.initialize_matrices()
+        self.matrices = self.initialize_matrices(model)
         sol = self.solve_(strength=strength, num_reads=num_reads, **options)
-        model.load_var_values_from_x(sol)
+        model.set_structure()
+        self.load_data_in_model(model, sol)
         return (
             SolverStatus.converged,
             "Solved Successfully",
             0,
         )
 
-    def solve_(self, strength=1e6, num_reads=1e4, **options):
+    def solve_(self, strength=1e6, num_reads=10000, **options):
         """Solve the hydraulic equations."""
         qubo = QUBO_POLY_MIXED(self.mixed_solution_vector, **options)
         matrices = tuple(sparse.COO(m) for m in self.matrices)

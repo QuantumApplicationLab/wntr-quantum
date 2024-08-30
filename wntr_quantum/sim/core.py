@@ -6,7 +6,7 @@ from quantum_newton_raphson.splu_solver import SPLU_SOLVER
 from wntr.sim.core import WNTRSimulator
 from wntr.sim.core import _Diagnostics
 from wntr.sim.core import _ValveSourceChecker
-from .quantum_newton_solver import QuantumNewtonSolver
+from .solvers.quantum_newton_solver import QuantumNewtonSolver
 
 logger = logging.getLogger(__name__)
 

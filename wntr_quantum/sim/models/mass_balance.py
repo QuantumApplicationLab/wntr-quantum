@@ -3,9 +3,7 @@ from wntr.epanet.util import HydParam
 from wntr.epanet.util import from_si
 
 
-def get_mass_balance_constraint(
-    m, wn, matrices, convert_to_us_unit=False
-):  # noqa: D417
+def get_mass_balance_matrix(m, wn, matrices, convert_to_us_unit=False):  # noqa: D417
     """Create the matrices for the mass balance equation.
 
     Args:
