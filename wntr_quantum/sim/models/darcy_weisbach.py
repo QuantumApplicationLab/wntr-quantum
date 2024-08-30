@@ -51,9 +51,9 @@ def dw_resistance_value(k, roughness, diameter, diameter_exp, length):
     Returns:
         _type_: _description_
     """
-    print("Roughness : %f" % roughness)
-    print("diameter : %f" % diameter)
-    print("resistance coeff : %f " % (k * (diameter**diameter_exp) * length))
+    # print("Roughness : %f" % roughness)
+    # print("diameter : %f" % diameter)
+    # print("resistance coeff : %f " % (k * (diameter**diameter_exp) * length))
     return dw_resistance_prefactor(k, roughness, diameter, diameter_exp) * length
 
 
@@ -228,7 +228,7 @@ def get_darcy_weisbach_matrix(m, wn, matrices):  # noqa: D417
         k0 = m.dw_resistance_0[link_name]
         k1 = m.dw_resistance_1[link_name]
         k2 = m.dw_resistance_2[link_name]
-        print(k0.value, k1.value, k2.value)
+        # print(k0.value, k1.value, k2.value)
 
         scaling = 1.0
         P0[ieq] -= scaling * k0.value

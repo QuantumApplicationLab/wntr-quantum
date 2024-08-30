@@ -9,7 +9,7 @@ from quantum_newton_raphson.qubo_solver import QUBO_SOLVER
 from quantum_newton_raphson.vqls_solver import VQLS_SOLVER
 from qubols.encodings import EfficientEncoding
 from wntr.sim import aml
-from wntr_quantum.sim.solvers import QuantumNewtonSolver
+from wntr_quantum.sim.quantum_newton_solver import QuantumNewtonSolver
 
 TOL_RESULTS = 1e-2
 

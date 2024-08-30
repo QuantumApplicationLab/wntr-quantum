@@ -42,7 +42,7 @@ def friction_factor(q, e, s):  # noqa: D417
     return f
 
 
-def dw_fit(roughness, diameter, plot=True, convert_to_us_unit=False):
+def dw_fit(roughness, diameter, plot=False, convert_to_us_unit=False):
     """_summary.
 
     Args:

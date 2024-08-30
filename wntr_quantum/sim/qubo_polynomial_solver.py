@@ -2,6 +2,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import sparse
 from quantum_newton_raphson.newton_raphson import newton_raphson
+from qubols.encodings import BaseQbitEncoding
 from qubols.encodings import DiscreteValuesEncoding
 from qubols.mixed_solution_vector import MixedSolutionVector_V2 as MixedSolutionVector
 from qubols.qubo_poly_mixed_variables import QUBO_POLY_MIXED
@@ -16,19 +17,20 @@ from wntr.sim.models import constraint
 from wntr.sim.models import param
 from wntr.sim.models import var
 from wntr.sim.models.utils import ModelUpdater
-from .chezy_manning import approx_chezy_manning_headloss_constraint
-from .chezy_manning import chezy_manning_constants
-from .chezy_manning import cm_resistance_param
-from .chezy_manning import get_chezy_manning_matrix
-from .darcy_weisbach import approx_darcy_weisbach_headloss_constraint
-from .darcy_weisbach import darcy_weisbach_constants
-from .darcy_weisbach import dw_resistance_param
-from .darcy_weisbach import get_darcy_weisbach_matrix
-from ..sim.headloss_models.mass_balance import get_mass_balance_constraint
+from wntr.sim.solvers import SolverStatus
+from .models.chezy_manning import approx_chezy_manning_headloss_constraint
+from .models.chezy_manning import chezy_manning_constants
+from .models.chezy_manning import cm_resistance_param
+from .models.chezy_manning import get_chezy_manning_matrix
+from .models.darcy_weisbach import approx_darcy_weisbach_headloss_constraint
+from .models.darcy_weisbach import darcy_weisbach_constants
+from .models.darcy_weisbach import dw_resistance_param
+from .models.darcy_weisbach import get_darcy_weisbach_matrix
+from .models.mass_balance import get_mass_balance_constraint
 
 
-class Network(object):
-    """Design problem solved using a QUBO approach."""
+class QuboPolynomialSolver(object):
+    """Solve the hydraulics equation following a QUBO approach."""
 
     def __init__(
         self,
@@ -36,26 +38,29 @@ class Network(object):
         flow_encoding,
         head_encoding,
     ):  # noqa: D417
-        """_summary_.
+        """Init the solver.
 
         Args:
-            wn (_type_): _description_
-            flow_encoding (_type_): _description_
-            head_encoding (_type_): _description_
-            pipe_diameters (_type_): _description_
+            wn (WaterNetwork): water network
+            flow_encoding (BaseEncoding): binary encoding for the flow
+            head_encoding (BaseEncoding): binary encoding for the head            pipe_diameters (_type_): _description_
         """
         self.wn = wn
+
+        # create the encoding vectors
         self.flow_encoding = flow_encoding
         self.head_encoding = head_encoding
         self.sol_vect_flows = SolutionVector(wn.num_pipes, encoding=flow_encoding)
         self.sol_vect_heads = SolutionVector(wn.num_junctions, encoding=head_encoding)
 
+        # create the aml
         self.m, self.model_updater = self.create_model()
 
         self.mixed_solution_vector = MixedSolutionVector(
             [self.sol_vect_flows, self.sol_vect_heads]
         )
 
+        # initialze the matrices of the polynomial equation
         self.matrices = self.initialize_matrices()
 
     def verify_encoding(self):
@@ -79,7 +84,7 @@ class Network(object):
         return p0 + p1 @ input + (p2 @ (input * input))
 
     def classical_solutions(self, max_iter=100, tol=1e-10):
-        """Generates the classical solution."""
+        """Computes the classical solution."""
         P0, P1, P2 = self.matrices
         num_heads = self.wn.num_junctions
         num_pipes = self.wn.num_pipes
@@ -312,7 +317,19 @@ class Network(object):
             new_sol[ih] = from_si(FlowUnits.CFS, solution[ih], HydParam.Length)
         return new_sol
 
-    def solve(self, strength=1e6, num_reads=1e4, **options):
+    def solve(self, model, strength=1e6, num_reads=1e4, **options):
+        """Solve the hydraulics equations."""
+        self.m = model
+        self.initialize_matrices()
+        sol = self.solve_(strength=strength, num_reads=num_reads, **options)
+        model.load_var_values_from_x(sol)
+        return (
+            SolverStatus.converged,
+            "Solved Successfully",
+            0,
+        )
+
+    def solve_(self, strength=1e6, num_reads=1e4, **options):
         """Solve the hydraulic equations."""
         qubo = QUBO_POLY_MIXED(self.mixed_solution_vector, **options)
         matrices = tuple(sparse.COO(m) for m in self.matrices)
@@ -331,4 +348,4 @@ class Network(object):
         if self.wn.options.hydraulic.headloss == "D-W":
             sol = self.convert_solution_to_si(sol)
 
-        return sol, param
+        return sol
