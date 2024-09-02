@@ -13,12 +13,8 @@ def friction_factor(q, e, s):  # noqa: D417
         e = pipe roughness  / diameter
         s = viscosity * pipe diameter
     """
-    A1 = 3.14159265358979323850e03
-    A2 = 1.57079632679489661930e03
     A8 = 4.61841319859066668690e00
     A9 = -8.68588963806503655300e-01
-    AB = 3.28895476345399058690e-03
-    AC = -5.14214965799093883760e-03
 
     w = q / s
 
@@ -27,18 +23,6 @@ def friction_factor(q, e, s):  # noqa: D417
     y2 = e / 3.7 + y1
     y3 = A9 * np.log(y2)
     f = 1.0 / (y3 * y3)
-    # else:
-    #     y2 = e / 3.7 + AB
-    #     y3 = A9 * np.log(y2)
-    #     fa = 1.0 / (y3 * y3)
-    #     fb = (2.0 + AC / (y2 * y3)) * fa
-    #     r = w / A2
-    #     x1 = 7.0 * fa - fb
-    #     x2 = 0.128 - 17.0 * fa + 2.5 * fb
-    #     x3 = -0.128 + 13.0 * fa - (fb + fb)
-    #     x4 = 0.032 - 3.0 * fa + 0.5 * fb
-    #     f = x1 + r * (x2 + r * (x3 + r * x4))
-
     return f
 
 
@@ -105,8 +89,8 @@ if __name__ == "__main__":
     #     roughness=0.000164, diameter=0.820210, plot=True, convert_to_us_unit=False
     # )
     # print(evlaluate_fit(res, 1.766))
-    roughness = 0.000264
-    DIAMS = np.linspace(0.5, 1.5, 25)
+    roughness = 0.164
+    DIAMS = np.linspace(1, 24, 25)
     RES = []
     for d in DIAMS:
         print(d)
@@ -118,4 +102,9 @@ if __name__ == "__main__":
     plt.plot(DIAMS, RES[:, 0])
     plt.plot(DIAMS, RES[:, 1])
     plt.plot(DIAMS, RES[:, 2])
+    plt.show()
+
+    plt.plot(DIAMS, RES[:, 0] / RES[:, 1])
+    plt.plot(DIAMS, RES[:, 1] / RES[:, 1])
+    plt.plot(DIAMS, RES[:, 2] / RES[:, 1])
     plt.show()

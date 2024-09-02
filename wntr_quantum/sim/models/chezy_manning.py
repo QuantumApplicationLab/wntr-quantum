@@ -88,10 +88,6 @@ class cm_resistance_param(Definition):  # noqa: D101
                 m.cm_diameter_exp,
                 length_us,
             )
-            print("roughness : %f" % roughness_us)
-            print("Diameter  : %f" % diameter_us)
-            print("length    : %f" % length_us)
-            print("value     : %f" % value)
             if link_name in m.cm_resistance:
                 m.cm_resistance[link_name].value = value
             else:
