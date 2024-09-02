@@ -1,6 +1,5 @@
 import wntr
 from wntr.epanet.util import FlowUnits
-from wntr.epanet.util import PressureUnits
 from wntr.epanet.util import HydParam
 from wntr.epanet.util import from_si
 from wntr.network import LinkStatus

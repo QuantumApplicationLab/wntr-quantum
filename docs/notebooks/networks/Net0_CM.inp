@@ -4,20 +4,20 @@ File obtained via Mario of a 2 node sysem
 
 [JUNCTIONS]
 ;ID              	Elev        	Demand      	Pattern         
- J1              	0           	500          	                	;
- D1              	0           	1000         	                	;
+ J1              	0           	0          	                	;
+ D1              	0           	50         	                	;
 
 [RESERVOIRS]
 ;ID              	Head        	Pattern         
- R1              	3          	                	;
+ R1              	30          	                	;
 
 [TANKS]
 ;ID              	Elevation   	InitLevel   	MinLevel    	MaxLevel    	Diameter    	MinVol      	VolCurve        	Overflow
 
 [PIPES]
 ;ID              	Node1           	Node2           	Length      	Diameter    	Roughness   	MinorLoss   	Status
- P1              	R1              	J1              	1         	    1000        	1        	    0           	Open  	;
- P2              	J1              	D1              	0.5      	    1000         	1             	0           	Open  	;
+ P1              	R1              	J1              	1000         	    1000        	0.015        	    0           	Open  	;
+ P2              	J1              	D1              	1000      	      1000         	0.015             0           	Open  	;
 
 [PUMPS]
 ;ID              	Node1           	Node2           	Parameters

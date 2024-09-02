@@ -1,4 +1,8 @@
+import numpy as np
 import wntr
+from wntr.epanet.util import FlowUnits
+from wntr.epanet.util import HydParam
+from wntr.epanet.util import from_si
 from wntr.network import LinkStatus
 from wntr.sim import aml
 from wntr.sim.models.utils import Definition
@@ -11,32 +15,22 @@ def chezy_manning_constants(m):
         m (_type_): _description_
     """
     m.cm_exp = 2
-    m.cm_minor_exp = 2
+    m.cm_k = (4 / (1.49 * np.pi)) ** 2 * (1 / 4) ** -1.33
+    m.cm_roughness_exp = 2
     m.cm_diameter_exp = -5.33
-    m.cm_k = 21.000  # 4.66 * (3.28) ** m.cm_diameter_exp
-
-    # m.cm_exp = 2
-    # m.cm_minor_exp = 2
-    # m.cm_diameter_exp = -4.8
-    # m.cm_k = 10.67  # 4.66 * (3.28) ** m.cm_diameter_exp
-
-    # m.cm_exp = 1
-    # m.cm_minor_exp = 1
-    # m.cm_k = 1
-    # m.cm_diameter_exp = -1
 
 
-def cm_resistance_prefactor(k, roughness, exp, diameter, diameter_exp):
+def cm_resistance_prefactor(k, roughness, roughness_exp, diameter, diameter_exp):
     """_summary_.
 
     Args:
         k (_type_): _description_
         roughness (_type_): _description_
-        exp (_type_): _description_
+        roughness_exp (_type_): _description_
         diameter (_type_): _description_
         diameter_exp (_type_): _description_
     """
-    return k * roughness ** (exp) * diameter ** (diameter_exp)
+    return k * roughness ** (roughness_exp) * diameter ** (diameter_exp)
 
 
 def cm_resistance_value(k, roughness, exp, diameter, diameter_exp, length):
@@ -77,14 +71,27 @@ class cm_resistance_param(Definition):  # noqa: D101
 
         for link_name in index_over:
             link = wn.get_link(link_name)
+
+            # convert values from SI to epanet internal
+            # roughness_us = 0.001 * from_si(
+            #     FlowUnits.CFS, link.roughness, HydParam.Length
+            # )
+            roughness_us = link.roughness
+            diameter_us = from_si(FlowUnits.CFS, link.diameter, HydParam.Length)
+            length_us = from_si(FlowUnits.CFS, link.length, HydParam.Length)
+
             value = cm_resistance_value(
                 m.cm_k,
-                link.roughness,
-                m.cm_exp,
-                link.diameter,
+                roughness_us,
+                m.cm_roughness_exp,
+                diameter_us,
                 m.cm_diameter_exp,
-                link.length,
+                length_us,
             )
+            print("roughness : %f" % roughness_us)
+            print("Diameter  : %f" % diameter_us)
+            print("length    : %f" % length_us)
+            print("value     : %f" % value)
             if link_name in m.cm_resistance:
                 m.cm_resistance[link_name].value = value
             else:
@@ -188,7 +195,7 @@ def get_chezy_manning_matrix(m, wn, matrices):  # noqa: D417
             P1[ieq, start_node_index] = 1
         else:
             start_h = m.source_head[start_node_name]
-            P0[ieq, 0] += start_h.value
+            P0[ieq, 0] += from_si(FlowUnits.CFS, start_h.value, HydParam.Length)
 
         if isinstance(end_node, wntr.network.Junction):
             end_h = m.head[end_node_name]
@@ -196,7 +203,7 @@ def get_chezy_manning_matrix(m, wn, matrices):  # noqa: D417
             P1[ieq, end_node_index] = -1
         else:
             end_h = m.source_head[end_node_name]
-            P0[ieq, 0] -= end_h.value
+            P0[ieq, 0] -= from_si(FlowUnits.CFS, end_h.value, HydParam.Length)
 
         k = m.cm_resistance[link_name]
 

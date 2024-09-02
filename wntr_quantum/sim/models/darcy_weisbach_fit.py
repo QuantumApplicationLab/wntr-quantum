@@ -101,7 +101,21 @@ def evlaluate_fit(coeffs, flow):
 
 
 if __name__ == "__main__":
-    res = dw_fit(
-        roughness=0.000164, diameter=0.820210, plot=True, convert_to_us_unit=False
-    )
-    print(evlaluate_fit(res, 1.766))
+    # res = dw_fit(
+    #     roughness=0.000164, diameter=0.820210, plot=True, convert_to_us_unit=False
+    # )
+    # print(evlaluate_fit(res, 1.766))
+    roughness = 0.000264
+    DIAMS = np.linspace(0.5, 1.5, 25)
+    RES = []
+    for d in DIAMS:
+        print(d)
+        res = dw_fit(
+            roughness=roughness, diameter=d, plot=False, convert_to_us_unit=False
+        )
+        RES.append(res)
+    RES = np.array(RES)
+    plt.plot(DIAMS, RES[:, 0])
+    plt.plot(DIAMS, RES[:, 1])
+    plt.plot(DIAMS, RES[:, 2])
+    plt.show()

@@ -100,8 +100,7 @@ class Network(object):
         assert np.allclose(func(sol), 0)
 
         # convert back to SI if DW
-        if self.wn.options.hydraulic.headloss == "D-W":
-            sol = self.convert_solution_to_si(sol)
+        sol = self.convert_solution_to_si(sol)
 
         return sol
 
@@ -131,9 +130,8 @@ class Network(object):
             qubo (_type_): __
             bqm (_type_): __
         """
-        if self.wn.options.hydraulic.headloss == "D-W":
-            reference_solution = self.convert_solution_from_si(reference_solution)
-            solution = self.convert_solution_from_si(solution)
+        reference_solution = self.convert_solution_from_si(reference_solution)
+        solution = self.convert_solution_from_si(solution)
 
         data_ref, eref = qubo.compute_energy(reference_solution, bqm)
         data_sol, esol = qubo.compute_energy(solution, bqm)
@@ -258,13 +256,12 @@ class Network(object):
         matrices = (P0, P1, P2)
 
         # get the mass balance and headloss matrix contributions
+        matrices = get_mass_balance_constraint(
+            self.m, self.wn, matrices, convert_to_us_unit=True
+        )
         if self.wn.options.hydraulic.headloss == "C-M":
-            matrices = get_mass_balance_constraint(self.m, self.wn, matrices)
             matrices = get_chezy_manning_matrix(self.m, self.wn, matrices)
         elif self.wn.options.hydraulic.headloss == "D-W":
-            matrices = get_mass_balance_constraint(
-                self.m, self.wn, matrices, convert_to_us_unit=True
-            )
             matrices = get_darcy_weisbach_matrix(self.m, self.wn, matrices)
         else:
             raise ValueError("Calculation only possible with C-M or D-W")
@@ -328,7 +325,6 @@ class Network(object):
         sol = self.flatten_solution_vector(sol)
 
         # convert back to SI if DW
-        if self.wn.options.hydraulic.headloss == "D-W":
-            sol = self.convert_solution_to_si(sol)
+        sol = self.convert_solution_to_si(sol)
 
         return sol, param
