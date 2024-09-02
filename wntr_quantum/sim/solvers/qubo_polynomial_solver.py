@@ -130,7 +130,7 @@ class QuboPolynomialSolver(object):
         plt.grid(which="minor", lw=0.1)
         plt.loglog()
 
-    def benchmark_solution(
+    def diagnostic_solution(
         self,
         solution: np.ndarray,
         reference_solution: np.ndarray,
