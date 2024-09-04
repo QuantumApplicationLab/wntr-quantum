@@ -14,11 +14,6 @@ DELTA = 1.0e-12
 TOL = 5  # => per cent
 
 
-def calculate_differences(value1, value2):
-    """Helper function to calculate percentage difference between classical and quantum results."""
-    return abs(value1 - value2) / abs(value1 + DELTA) <= TOL / 100.0
-
-
 def calculate_small_differences(value1, value2):
     """Helper function to calculate percentage difference between classical and quantum results."""
     return np.allclose([value1], [value2], atol=1e-1, rtol=1e-1)
