@@ -1,6 +1,5 @@
 from typing import List
 from typing import Tuple
-import dimod
 import matplotlib.pyplot as plt
 import numpy as np
 import sparse
@@ -8,7 +7,6 @@ from quantum_newton_raphson.newton_raphson import newton_raphson
 from qubops.encodings import BaseQbitEncoding
 from qubops.mixed_solution_vector import MixedSolutionVector_V2 as MixedSolutionVector
 from qubops.qubops_mixed_vars import QUBOPS_MIXED
-
 from qubops.solution_vector import SolutionVector_V2 as SolutionVector
 from wntr.epanet.util import FlowUnits
 from wntr.epanet.util import HydParam
