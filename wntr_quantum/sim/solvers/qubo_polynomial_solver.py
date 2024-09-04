@@ -5,10 +5,10 @@ import matplotlib.pyplot as plt
 import numpy as np
 import sparse
 from quantum_newton_raphson.newton_raphson import newton_raphson
-from qubols.encodings import BaseQbitEncoding
-from qubols.mixed_solution_vector import MixedSolutionVector_V2 as MixedSolutionVector
-from qubols.qubo_poly_mixed_variables import QUBO_POLY_MIXED
-from qubols.solution_vector import SolutionVector_V2 as SolutionVector
+from qubops.encodings import BaseQbitEncoding
+from qubops.mixed_solution_vector import MixedSolutionVector_V2 as MixedSolutionVector
+from qubops.qubo_poly_mixed_variables import QUBO_POLY_MIXED
+from qubops.solution_vector import SolutionVector_V2 as SolutionVector
 from wntr.epanet.util import FlowUnits
 from wntr.epanet.util import HydParam
 from wntr.epanet.util import from_si
@@ -34,8 +34,8 @@ class QuboPolynomialSolver(object):
 
         Args:
             wn (WaterNetworkModel): water network
-            flow_encoding (qubols.encodings.BaseQbitEncoding): binary encoding for the flow
-            head_encoding (qubols.encodings.BaseQbitEncoding): binary encoding for the head
+            flow_encoding (qubops.encodings.BaseQbitEncoding): binary encoding for the flow
+            head_encoding (qubops.encodings.BaseQbitEncoding): binary encoding for the head
         """
         self.wn = wn
 

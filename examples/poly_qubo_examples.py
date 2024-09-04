@@ -2,7 +2,7 @@ import os
 import matplotlib.pyplot as plt
 import wntr
 from dwave.samplers import SteepestDescentSolver
-from qubols.encodings import PositiveQbitEncoding
+from qubops.encodings import PositiveQbitEncoding
 import wntr_quantum
 
 
