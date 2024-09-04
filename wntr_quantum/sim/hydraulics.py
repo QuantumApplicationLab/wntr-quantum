@@ -92,6 +92,4 @@ def create_hydraulic_model(wn):
         )
     constraint.leak_constraint.build(m, wn, model_updater)
 
-    # TODO: Document that changing a curve with controls does not do anything; you have to change the pump_curve_name attribute on the pump
-
     return m, model_updater
