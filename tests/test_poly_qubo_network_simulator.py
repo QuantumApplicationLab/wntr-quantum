@@ -4,7 +4,7 @@ import pathlib
 import pytest
 import wntr
 from dwave.samplers import SteepestDescentSolver
-from qubols.encodings import PositiveQbitEncoding
+from qubops.encodings import PositiveQbitEncoding
 import wntr_quantum
 
 NETWORKS_FOLDER = pathlib.Path(__file__).with_name("networks")
