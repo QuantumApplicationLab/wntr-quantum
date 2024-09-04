@@ -7,7 +7,8 @@ import sparse
 from quantum_newton_raphson.newton_raphson import newton_raphson
 from qubops.encodings import BaseQbitEncoding
 from qubops.mixed_solution_vector import MixedSolutionVector_V2 as MixedSolutionVector
-from qubops.qubo_poly_mixed_variables import QUBO_POLY_MIXED
+from qubops.qubops_mixed_vars import QUBOPS_MIXED
+
 from qubops.solution_vector import SolutionVector_V2 as SolutionVector
 from wntr.epanet.util import FlowUnits
 from wntr.epanet.util import HydParam
@@ -130,26 +131,20 @@ class QuboPolynomialSolver(object):
         plt.grid(which="minor", lw=0.1)
         plt.loglog()
 
-    def diagnostic_solution(
-        self,
-        solution: np.ndarray,
-        reference_solution: np.ndarray,
-        qubo: QUBO_POLY_MIXED,
-        bqm: dimod.BQM,
-    ):
+    def diagnostic_solution(self, solution: np.ndarray, reference_solution: np.ndarray):
         """Benchmark a solution against the exact reference solution.
 
         Args:
             solution (np.array): solution to be benchmarked
             reference_solution (np.array): reference solution
-            qubo (QUBO_POLY_MIXEd): QUBO_POLY_MIXEd instance
+            qubo (QUBOPS_MIXED): QUBOPS_MIXED instance
             bqm (dimod.BQM): BQM from dimod
         """
         reference_solution = self.convert_solution_from_si(reference_solution)
         solution = self.convert_solution_from_si(solution)
 
-        data_ref, eref = qubo.compute_energy(reference_solution, bqm)
-        data_sol, esol = qubo.compute_energy(solution, bqm)
+        data_ref, eref = self.qubo.compute_energy(reference_solution)
+        data_sol, esol = self.qubo.compute_energy(solution)
 
         np.set_printoptions(precision=3)
         self.verify_encoding()
@@ -272,6 +267,21 @@ class QuboPolynomialSolver(object):
         for iv, v in enumerate(model.vars()):
             v.value = data[iv]
 
+    @staticmethod
+    def extract_data_from_model(model: Model) -> np.ndarray:
+        """Loads some data in the model.
+
+        Args:
+            model (Model): AML model from WNTR
+
+        Returns:
+            np.ndarray: data extracted from model
+        """
+        data = []
+        for v in model.vars():
+            data.append(v.value)
+        return data
+
     def solve(  # noqa: D417
         self, model: Model, strength: float = 1e6, num_reads: int = 10000, **options
     ) -> Tuple:
@@ -312,17 +322,17 @@ class QuboPolynomialSolver(object):
         Returns:
             np.ndarray: solution of the problem
         """
-        qubo = QUBO_POLY_MIXED(self.mixed_solution_vector, **options)
+        self.qubo = QUBOPS_MIXED(self.mixed_solution_vector, **options)
         matrices = tuple(sparse.COO(m) for m in self.matrices)
 
         # creates BQM
-        bqm = qubo.create_bqm(matrices, strength=strength)
+        self.qubo.qubo_dict = self.qubo.create_bqm(matrices, strength=strength)
 
         # sample
-        sampleset = qubo.sample_bqm(bqm, num_reads=num_reads)
+        sampleset = self.qubo.sample_bqm(self.qubo.qubo_dict, num_reads=num_reads)
 
         # decode
-        sol = qubo.decode_solution(sampleset.lowest().record[0][0])
+        sol = self.qubo.decode_solution(sampleset.lowest().record[0][0])
 
         # flatten solution
         sol = self.flatten_solution_vector(sol)
