@@ -21,7 +21,7 @@ from ..sim.hydraulics import create_hydraulic_model
 from ..sim.models.chezy_manning import cm_resistance_value
 from ..sim.models.chezy_manning import get_pipe_design_chezy_manning_matrix
 from ..sim.models.darcy_weisbach import dw_resistance_value
-from ..sim.models.darcy_weisbach import get_pipe_design_darcy_weisbach_matrix
+from ..sim.models.darcy_weisbach import get_pipe_design_darcy_wesibach_matrix
 from ..sim.models.mass_balance import get_mass_balance_matrix
 
 
@@ -367,7 +367,7 @@ class QUBODesignPipeDiameter(object):
                 self.model, self.wn, matrices
             )
         elif self.wn.options.hydraulic.headloss == "D-W":
-            matrices = get_pipe_design_darcy_weisbach_matrix(
+            matrices = get_pipe_design_darcy_wesibach_matrix(
                 self.model, self.wn, matrices
             )
         else:

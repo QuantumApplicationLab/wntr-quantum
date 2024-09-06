@@ -229,13 +229,70 @@ def get_darcy_weisbach_matrix(m, wn, matrices):  # noqa: D417
         k2 = m.dw_resistance_2[link_name]
         # print(k0.value, k1.value, k2.value)
 
-        scaling = 1.0
-        P0[ieq] -= scaling * k0.value
-        P1[ieq, flow_index] -= scaling * k1.value
-        P2[ieq, flow_index, flow_index] -= scaling * k2.value
+        P0[ieq] -= k0.value
+        P1[ieq, flow_index] -= k1.value
+        P2[ieq, flow_index, flow_index] -= k2.value
 
     return (P0, P1, P2)
 
 
-def get_pipe_design_darcy_weisbach_matrix(m, wn, matrices):
-    raise NotImplementedError("Not yet")
+def get_pipe_design_darcy_wesibach_matrix(m, wn, matrices):  # noqa: D417
+    """Adds a mass balance to the model for the specified junctions.
+
+    Parameters
+    ----------
+    m: wntr.aml.aml.aml.Model
+    wn: wntr.network.model.WaterNetworkModel
+    updater: ModelUpdater
+    index_over: list of str
+        list of pipe names; default is all pipes in wn
+    """
+    P0, P1, P2, P3 = matrices
+
+    continuous_var_name = [v.name for v in list(m.vars())]
+    num_continuous_var = len(continuous_var_name)
+    # discrete_var_name = [v.name for k, v in m.cm_resistance.items()]
+    var_names = continuous_var_name  # + discrete_var_name
+
+    index_over = wn.pipe_name_list
+
+    for ieq0, link_name in enumerate(index_over):
+
+        ieq = ieq0 + len(wn.junction_name_list)
+        link = wn.get_link(link_name)
+        f = m.flow[link_name]
+        flow_index = var_names.index(f.name)
+
+        start_node_name = link.start_node_name
+        end_node_name = link.end_node_name
+
+        start_node = wn.get_node(start_node_name)
+        end_node = wn.get_node(end_node_name)
+
+        if isinstance(start_node, wntr.network.Junction):
+            start_h = m.head[start_node_name]
+            start_node_index = var_names.index(start_h.name)
+            P1[ieq, start_node_index] = 1
+        else:
+            start_h = m.source_head[start_node_name]
+            P0[ieq, 0] += from_si(FlowUnits.CFS, start_h.value, HydParam.Length)
+
+        if isinstance(end_node, wntr.network.Junction):
+            end_h = m.head[end_node_name]
+            end_node_index = var_names.index(end_h.name)
+            P1[ieq, end_node_index] = -1
+        else:
+            end_h = m.source_head[end_node_name]
+            P0[ieq, 0] -= from_si(FlowUnits.CFS, end_h.value, HydParam.Length)
+
+        for pipe_coefs, pipe_idx in zip(
+            m.pipe_coefficients[link_name].value,
+            m.pipe_coefficients_indices[link_name].value,
+        ):
+            P1[ieq, pipe_idx + num_continuous_var] -= pipe_coefs[0]
+            P2[ieq, flow_index, pipe_idx + num_continuous_var] -= pipe_coefs[1]
+            P3[
+                ieq, flow_index, flow_index, pipe_idx + num_continuous_var
+            ] -= -pipe_coefs[2]
+
+    return (P0, P1, P2, P3)
