@@ -1,28 +1,33 @@
-from typing import List
 import itertools
+from typing import List, Tuple
 import numpy as np
 import sparse
 from quantum_newton_raphson.newton_raphson import newton_raphson
 from qubops.encodings import BaseQbitEncoding
+from qubops.encodings import PositiveQbitEncoding
 from qubops.mixed_solution_vector import MixedSolutionVector_V2 as MixedSolutionVector
 from qubops.qubops_mixed_vars import QUBOPS_MIXED
 from qubops.solution_vector import SolutionVector_V2 as SolutionVector
-from wntr.sim import aml
-from wntr.sim.models import constants
-from wntr.sim.models import constraint
-from wntr.sim.models import param
-from wntr.sim.models import var
-from wntr.sim.models.utils import ModelUpdater
 from wntr.epanet.util import FlowUnits
 from wntr.epanet.util import HydParam
 from wntr.epanet.util import from_si
 from wntr.epanet.util import to_si
 from wntr.network import WaterNetworkModel
+from wntr.sim import aml
 from wntr.sim.aml import Model
+from wntr.sim.models import constants
+from wntr.sim.models import constraint
+from wntr.sim.models import param
+from wntr.sim.models import var
+from wntr.sim.models.utils import ModelUpdater
 from wntr.sim.solvers import SolverStatus
-from ..models.chezy_manning import get_chezy_manning_matrix
-from ..models.darcy_weisbach import get_darcy_weisbach_matrix
-from ..models.mass_balance import get_mass_balance_matrix
+from ..sim.hydraulics import create_hydraulic_model
+from ..sim.models.chezy_manning import cm_resistance_value
+from ..sim.models.chezy_manning import get_pipe_design_chezy_manning_matrix
+from ..sim.models.darcy_weisbach import darcy_weisbach_constants
+from ..sim.models.darcy_weisbach import dw_resistance_value
+from ..sim.models.darcy_weisbach import get_pipe_design_darcy_weisbach_matrix
+from ..sim.models.mass_balance import get_mass_balance_matrix
 
 
 class QUBODesignPipeDiameter(object):
@@ -45,21 +50,34 @@ class QUBODesignPipeDiameter(object):
             pipe_diameters (List): List of pipe diameters in SI
             weight_cost (float, optional): weight for the cost optimization. Defaults to 1e-1.
         """
+        # water network
         self.wn = wn
+
+        # pipe diameters (converts to meter)
+        self.pipe_diameters = [p / 1000 for p in pipe_diameters]
+        self.num_diameters = len(pipe_diameters)
+
+        # encodings of the head/flow variables
         self.flow_encoding = flow_encoding
         self.head_encoding = head_encoding
         self.sol_vect_flows = SolutionVector(wn.num_pipes, encoding=flow_encoding)
         self.sol_vect_heads = SolutionVector(wn.num_junctions, encoding=head_encoding)
 
-        self.pipe_diameters = pipe_diameters
-        self.roughness_factor = self.get_roughness_factor()
+        # one hot encoding for the pipe coefficients
+        self.num_hot_encoding = wn.num_pipes * self.num_diameters
+        self.pipe_encoding = PositiveQbitEncoding(1, "x_", offset=0, step=1)
+        self.sol_vect_pipes = SolutionVector(self.num_hot_encoding, self.pipe_encoding)
 
-        self.m, self.model_updater = self.create_cm_model()
-
-        self.sol_vect_res = self.get_resistance_prefactor_encoding()
+        # mixed solution vector
         self.mixed_solution_vector = MixedSolutionVector(
-            [self.sol_vect_flows, self.sol_vect_heads, self.sol_vect_res]
+            [self.sol_vect_flows, self.sol_vect_heads, self.sol_vect_pipes]
         )
+
+        # basic hydraulic model
+        self.model, self.model_updater = create_hydraulic_model(wn)
+
+        # valies of the pipe diameters/coefficients
+        self.get_pipe_data()
 
         self.weight_cost = weight_cost
         self.head_lb = 10
@@ -67,50 +85,163 @@ class QUBODesignPipeDiameter(object):
 
         self.matrices = self.initialize_matrices()
 
-    def get_roughness_factor(self):
-        """_summary_.
+    def get_dw_pipe_coefficients(self, link):
+        """Get the pipe coefficients for a specific link with DW.
 
-        Raises:
-            ValueError: _description_
+        Args:
+            link (_type_): _description_
+        """
+        values = []
+        for diam in self.pipe_diameters:
+
+            # convert values from SI to epanet internal
+            roughness_us = 0.001 * from_si(
+                FlowUnits.CFS, link.roughness, HydParam.Length
+            )
+            diameter_us = from_si(FlowUnits.CFS, diam, HydParam.Length)
+            length_us = from_si(FlowUnits.CFS, link.length, HydParam.Length)
+
+            # compute the resistance value fit coefficients
+            values.append(
+                dw_resistance_value(
+                    self.model.dw_k,
+                    roughness_us,
+                    diameter_us,
+                    self.model.dw_diameter_exp,
+                    length_us,
+                )
+            )
+        return values
+
+    def get_cm_pipe_coefficients(self, link):
+        """Get the pipe coefficients for a specific link with CM.
+
+        Args:
+            link (_type_): _description_
+        """
+        values = []
+        for diam in self.pipe_diameters:
+
+            # convert values from SI to epanet internal
+            roughness_us = link.roughness
+            diameter_us = from_si(FlowUnits.CFS, diam, HydParam.Length)
+            length_us = from_si(FlowUnits.CFS, link.length, HydParam.Length)
+
+            # compute the resistance value fit coefficients
+            values.append(
+                cm_resistance_value(
+                    self.model.cm_k,
+                    roughness_us,
+                    self.model.cm_roughness_exp,
+                    diameter_us,
+                    self.model.cm_diameter_exp,
+                    length_us,
+                )
+            )
+        return values
+
+    def get_pipe_prices(self, link):
+        """Get the price of the pipe for the different diameters.
+
+        Args:
+            link (wn.link): pipe info
+        """
+
+        def _compute_price(diameter, length):
+            """Price model of the pipe.
+
+            Args:
+                diameter (float): diameter
+                length (float): length
+
+            Returns:
+                float: price
+            """
+            return np.pi * diameter * length / 1e5
+
+        prices = []
+        for diam in self.pipe_diameters:
+
+            # convert values from SI to epanet internal
+            diameter_us = from_si(FlowUnits.CFS, diam, HydParam.Length)
+            length_us = from_si(FlowUnits.CFS, link.length, HydParam.Length)
+
+            # compute the price
+            prices.append(_compute_price(diameter_us, length_us))
+
+        return prices
+
+    def get_pipe_data(self):
+        """Get the parameters of the AML model related to each pipe.
 
         Returns:
-            _type_: _description_
+            Dict: possible pipe coefficients for each coefficients
         """
-        index_over = self.wn.pipe_name_list
-        roughness_factors = []
-        for link_name in index_over:
+        if not hasattr(self.model, "pipe_coefficients"):
+            self.model.pipe_coefficients = aml.ParamDict()
+
+        if not hasattr(self.model, "pipe_coefficients_indices"):
+            self.model.pipe_coefficients_indices = aml.ParamDict()
+
+        if not hasattr(self.model, "pipe_prices"):
+            self.model.pipe_prices = aml.ParamDict()
+
+        # select model
+        if self.wn.options.hydraulic.headloss == "C-M":
+            get_pipe_coeff_values = self.get_cm_pipe_coefficients
+
+        elif self.wn.options.hydraulic.headloss == "D-W":
+            get_pipe_coeff_values = self.get_dw_pipe_coefficients
+
+        # loop over pipes
+        idx_start = 0
+        for link_name in self.wn.pipe_name_list:
+
+            # get the link
             link = self.wn.get_link(link_name)
-            roughness_factors.append(link.roughness)
 
-        if len(set(roughness_factors)) > 1:
-            raise ValueError(
-                "works only with all pipes having the same roughness sorry"
-            )
-        else:
-            return roughness_factors[0]
+            # compute the pipe coeffcient values
+            pipe_coeffs_values = get_pipe_coeff_values(link)
+            if link_name in self.model.pipe_coefficients:
+                self.model.pipe_coefficients[link_name].value = pipe_coeffs_values
+            else:
+                self.model.pipe_coefficients[link_name] = aml.Param(pipe_coeffs_values)
 
-    def get_resistance_prefactor_encoding(self):
-        """_summary_."""
-        values = np.array(
-            [
-                cm_resistance_prefactor(
-                    self.m.cm_k,
-                    self.roughness_factor,
-                    self.m.cm_exp,
-                    d,
-                    self.m.cm_diameter_exp,
-                )
-                for d in self.pipe_diameters
-            ]
-        )
-        values.sort()
-        nqbit = int(np.ceil(np.log2(len(values))))
-        enc = DiscreteValuesEncoding(values, nqbit, "cm_res")
-        return SolutionVector(size=self.wn.num_pipes, encoding=enc)
+            # compute the pipe price
+            prices = self.get_pipe_prices(link)
+            if link_name in self.model.pipe_prices:
+                self.model.pipe_prices[link_name].value = prices
+            else:
+                self.model.pipe_prices[link_name] = aml.Param(prices)
+
+            # compute the indices
+            idx_end = idx_start + len(pipe_coeffs_values)
+            indices = list(range(idx_start, idx_end))
+            if link_name in self.model.pipe_coefficients_indices:
+                self.model.pipe_coefficients_indices[link_name].value = indices
+            else:
+                self.model.pipe_coefficients_indices[link_name] = aml.Param(indices)
+            idx_start = len(pipe_coeffs_values)
+
+    def verify_encoding(self):
+        """Print info regarding the encodings."""
+        hres = self.head_encoding.get_average_precision()
+        hvalues = np.sort(self.head_encoding.get_possible_values())
+        fres = self.flow_encoding.get_average_precision()
+        fvalues = np.sort(self.flow_encoding.get_possible_values())
+        print("Head Encoding : %f => %f (res: %f)" % (hvalues[0], hvalues[-1], hres))
+        print("Flow Encoding : %f => %f (res: %f)" % (fvalues[0], fvalues[-1], fres))
 
     def verify_solution(self, input, params):
-        """generates the classical solution."""
+        """Computes the rhs vector associate with the input.
 
+        Args:
+            input (np.ndarray): proposed solution
+            params (np.ndarray): parameters of the model
+
+        Returns:
+            np.ndarray: RHS vector
+        """
         P0, P1, P2, P3 = self.matrices
         num_heads = self.wn.num_junctions
         num_pipes = self.wn.num_pipes
@@ -125,8 +256,55 @@ class QUBODesignPipeDiameter(object):
         return p0 + p1 @ input + parameters * (p3 @ (input * input))
 
     def enumerates_classical_solutions(self):
-        """generates the classical solution."""
+        """Generates the classical solution."""
+        encoding = []
+        for idiam in range(self.num_diameters):
+            tmp = [0] * self.num_diameters
+            tmp[idiam] = 1
+            encoding.append(tmp)
 
+        pipe_prices = []
+        for link_name in self.wn.pipe_name_list:
+            pipe_prices += self.model.pipe_prices[link_name].value
+
+        for params in itertools.product(encoding, repeat=self.wn.num_pipes):
+            pvalues = []
+            pdiam = []
+            for p in params:
+                pvalues += p
+                _diam = (self.pipe_diameters * np.array(p)).sum()
+                pdiam.append(_diam * 1000)
+            price = (np.array(pipe_prices) * np.array(pvalues)).sum()
+            sol = self.compute_classical_solution(pvalues)
+            print(price, pdiam, sol)
+
+    def convert_solution_to_si(self, solution: np.ndarray) -> np.ndarray:
+        """Converts the solution to SI.
+
+        Args:
+            solution (array): solution vectors in US units
+
+        Returns:
+            Tuple: solution in SI
+        """
+        num_heads = self.wn.num_junctions
+        num_pipes = self.wn.num_pipes
+        new_sol = np.zeros_like(solution)
+        for ip in range(num_pipes):
+            new_sol[ip] = to_si(FlowUnits.CFS, solution[ip], HydParam.Flow)
+        for ih in range(num_pipes, num_pipes + num_heads):
+            new_sol[ih] = to_si(FlowUnits.CFS, solution[ih], HydParam.Length)
+        return new_sol
+
+    def compute_classical_solution(self, parameters):
+        """Computes the classical solution for a values of the hot encoding parameters.
+
+        Args:
+            parameters (List): list of the one hot encoding values e.g. [1,0,1,0]
+
+        Returns:
+            np.mdarray : solution
+        """
         P0, P1, P2, P3 = self.matrices
         num_heads = self.wn.num_junctions
         num_pipes = self.wn.num_pipes
@@ -136,133 +314,43 @@ class QUBODesignPipeDiameter(object):
             -1,
         )
         p1 = P1[:num_vars, :num_vars]
-        p3 = P3[:num_vars].sum(-1)[:, :num_vars, :num_vars].sum(-1)
+        params = np.array([0] * num_vars + parameters)
+        p3 = (params * P3).sum(-1)[:, :num_vars, :num_vars].sum(-1)[:num_vars]
 
         def func(input):
-            return p0 + p1 @ input + parameters * (p3 @ (input * input))
+            return p0 + p1 @ input + (p3 @ (input * input))
 
-        # res_prefactor = np.array(
-        #     [
-        #         cm_resistance_prefactor(
-        #             self.m.cm_k,
-        #             self.roughness_factor,
-        #             self.m.cm_exp,
-        #             d,
-        #             self.m.cm_diameter_exp,
-        #         )
-        #         for d in self.pipe_diameters
-        #     ]
-        # )
-        # res_prefactor.sort()
-
-        res_prefactor = self.sol_vect_res.encoded_reals[0].get_possible_values()
-        prefactor_combinations = itertools.product(
-            res_prefactor, repeat=self.wn.num_pipes
-        )
-        for prefacs in prefactor_combinations:
-
-            parameters = np.array([0] * num_heads + list(prefacs))
-            initial_point = np.random.rand(num_vars)
-            res = newton_raphson(func, initial_point)
-            assert np.allclose(func(res.solution), 0)
-            print(prefacs, res.solution)
-
-    def create_cm_model(self):
-        """Create the aml.
-
-        Args:
-            wn (_type_): _description_
-
-        Raises:
-            NotImplementedError: _description_
-            NotImplementedError: _description_
-            ValueError: _description_
-            ValueError: _description_
-            NotImplementedError: _description_
-            NotImplementedError: _description_
-
-        Returns:
-            _type_: _description_
-        """
-        if self.wn.options.hydraulic.demand_model in ["PDD", "PDA"]:
-            raise ValueError("Pressure Driven simulations not supported")
-        if self.wn.options.hydraulic.headloss not in ["C-M"]:
-            raise ValueError("Quantum Design only supported for C-M simulations")
-
-        m = aml.Model()
-        model_updater = ModelUpdater()
-
-        # Global constants
-        chezy_manning_constants(m)
-        constants.head_pump_constants(m)
-        constants.leak_constants(m)
-        constants.pdd_constants(m)
-
-        param.source_head_param(m, self.wn)
-        param.expected_demand_param(m, self.wn)
-
-        param.leak_coeff_param.build(m, self.wn, model_updater)
-        param.leak_area_param.build(m, self.wn, model_updater)
-        param.leak_poly_coeffs_param.build(m, self.wn, model_updater)
-        param.elevation_param.build(m, self.wn, model_updater)
-
-        cm_resistance_param.build(m, self.wn, model_updater)
-        param.minor_loss_param.build(m, self.wn, model_updater)
-        param.tcv_resistance_param.build(m, self.wn, model_updater)
-        param.pump_power_param.build(m, self.wn, model_updater)
-        param.valve_setting_param.build(m, self.wn, model_updater)
-
-        var.flow_var(m, self.wn)
-        var.head_var(m, self.wn)
-        var.leak_rate_var(m, self.wn)
-
-        constraint.mass_balance_constraint.build(m, self.wn, model_updater)
-
-        approx_chezy_manning_headloss_constraint.build(m, self.wn, model_updater)
-
-        constraint.head_pump_headloss_constraint.build(m, self.wn, model_updater)
-        constraint.power_pump_headloss_constraint.build(m, self.wn, model_updater)
-        constraint.prv_headloss_constraint.build(m, self.wn, model_updater)
-        constraint.psv_headloss_constraint.build(m, self.wn, model_updater)
-        constraint.tcv_headloss_constraint.build(m, self.wn, model_updater)
-        constraint.fcv_headloss_constraint.build(m, self.wn, model_updater)
-        if len(self.wn.pbv_name_list) > 0:
-            raise NotImplementedError(
-                "PBV valves are not currently supported in the WNTRSimulator"
-            )
-        if len(self.wn.gpv_name_list) > 0:
-            raise NotImplementedError(
-                "GPV valves are not currently supported in the WNTRSimulator"
-            )
-        constraint.leak_constraint.build(m, self.wn, model_updater)
-
-        # TODO: Document that changing a curve with controls does not do anything; you have to change the pump_curve_name attribute on the pump
-
-        return m, model_updater
+        initial_point = np.random.rand(num_vars)
+        res = newton_raphson(func, initial_point)
+        assert np.allclose(func(res.solution), 0)
+        return self.convert_solution_to_si(res.solution)
 
     def get_cost_matrix(self, matrices):
-        """_summary_.
+        """Add the equation that ar sued to maximize the pipe coefficiens and therefore minimize the diameter.
 
         Args:
-            matrices (_type_): _description_
+            matrices (tuple): The matrices
         """
         P0, P1, P2, P3 = matrices
-        n = self.sol_vect_res.size
-        max_val = self.sol_vect_res.encoded_reals[0].get_max_value()
-        P0[-1] += self.weight_cost * n * max_val
 
+        # loop over all the pipe coeffs
         istart = self.sol_vect_flows.size + self.sol_vect_heads.size
-        for i in range(self.sol_vect_res.size):
-            P1[-1, istart + i] = -self.weight_cost
+        index_over = self.wn.pipe_name_list
+
+        # loop over all the pipe coeffs
+        for link_name in index_over:
+            for pipe_cost, pipe_idx in zip(
+                self.model.pipe_prices[link_name].value,
+                self.model.pipe_coefficients_indices[link_name].value,
+            ):
+                P1[-1, istart + pipe_idx] = self.weight_cost * pipe_cost
         return P0, P1, P2, P3
 
-    def initialize_matrices(self):
+    def initialize_matrices(self) -> Tuple:
         """_summary_."""
-        num_equations = len(list(self.m.cons())) + 1
-        num_continuous_variables = len(list(self.m.vars()))
-        num_discrete_variables = len(self.m.cm_resistance)
-
-        num_variables = num_continuous_variables + num_discrete_variables
+        num_equations = len(list(self.model.cons())) + 1  # +1 for cost equation
+        num_continuous_variables = len(list(self.model.vars()))
+        num_variables = num_continuous_variables + self.num_hot_encoding
 
         # must transform that to coo
         P0 = np.zeros((num_equations, 1))
@@ -271,8 +359,22 @@ class QUBODesignPipeDiameter(object):
         P3 = np.zeros((num_equations, num_variables, num_variables, num_variables))
 
         matrices = (P0, P1, P2, P3)
-        matrices = get_mass_balance_constraint_design(self.m, self.wn, matrices)
-        matrices = get_chezy_manning_matrix_design(self.m, self.wn, matrices)
+        (P0, P1, P2) = get_mass_balance_matrix(
+            self.model, self.wn, (P0, P1, P2), convert_to_us_unit=True
+        )
+
+        # get the headloss matrix contributions
+        if self.wn.options.hydraulic.headloss == "C-M":
+            matrices = get_pipe_design_chezy_manning_matrix(
+                self.model, self.wn, matrices
+            )
+        elif self.wn.options.hydraulic.headloss == "D-W":
+            matrices = get_pipe_design_darcy_weisbach_matrix(
+                self.model, self.wn, matrices
+            )
+        else:
+            raise ValueError("Calculation only possible with C-M or D-W")
+
         matrices = self.get_cost_matrix(matrices)
 
         return matrices

@@ -63,7 +63,7 @@ class cm_resistance_param(Definition):  # noqa: D101
         index_over: list of str
             list of pipe names
         """
-        if not hasattr(m, "hw_resistance"):
+        if not hasattr(m, "cm_resistance"):
             m.cm_resistance = aml.ParamDict()
 
         if index_over is None:
@@ -73,9 +73,6 @@ class cm_resistance_param(Definition):  # noqa: D101
             link = wn.get_link(link_name)
 
             # convert values from SI to epanet internal
-            # roughness_us = 0.001 * from_si(
-            #     FlowUnits.CFS, link.roughness, HydParam.Length
-            # )
             roughness_us = link.roughness
             diameter_us = from_si(FlowUnits.CFS, link.diameter, HydParam.Length)
             length_us = from_si(FlowUnits.CFS, link.length, HydParam.Length)
@@ -208,7 +205,7 @@ def get_chezy_manning_matrix(m, wn, matrices):  # noqa: D417
     return (P0, P1, P2)
 
 
-def get_chezy_manning_matrix_design(m, wn, matrices):  # noqa: D417
+def get_pipe_design_chezy_manning_matrix(m, wn, matrices):  # noqa: D417
     """Adds a mass balance to the model for the specified junctions.
 
     Parameters
@@ -222,9 +219,9 @@ def get_chezy_manning_matrix_design(m, wn, matrices):  # noqa: D417
     P0, P1, P2, P3 = matrices
 
     continuous_var_name = [v.name for v in list(m.vars())]
-    discrete_var_name = [v.name for k, v in m.cm_resistance.items()]
-
-    var_names = continuous_var_name + discrete_var_name
+    num_continuous_var = len(continuous_var_name)
+    # discrete_var_name = [v.name for k, v in m.cm_resistance.items()]
+    var_names = continuous_var_name  # + discrete_var_name
 
     index_over = wn.pipe_name_list
 
@@ -247,7 +244,7 @@ def get_chezy_manning_matrix_design(m, wn, matrices):  # noqa: D417
             P1[ieq, start_node_index] = 1
         else:
             start_h = m.source_head[start_node_name]
-            P0[ieq, 0] += start_h.value
+            P0[ieq, 0] += from_si(FlowUnits.CFS, start_h.value, HydParam.Length)
 
         if isinstance(end_node, wntr.network.Junction):
             end_h = m.head[end_node_name]
@@ -255,11 +252,12 @@ def get_chezy_manning_matrix_design(m, wn, matrices):  # noqa: D417
             P1[ieq, end_node_index] = -1
         else:
             end_h = m.source_head[end_node_name]
-            P0[ieq, 0] -= end_h.value
+            P0[ieq, 0] -= from_si(FlowUnits.CFS, end_h.value, HydParam.Length)
 
-        k = m.cm_resistance[link_name]
-        cm_res_index = var_names.index(k.name)
-
-        P3[ieq, flow_index, flow_index, cm_res_index] = -link.length
+        for pipe_coefs, pipe_idx in zip(
+            m.pipe_coefficients[link_name].value,
+            m.pipe_coefficients_indices[link_name].value,
+        ):
+            P3[ieq, flow_index, flow_index, pipe_idx + num_continuous_var] = -pipe_coefs
 
     return (P0, P1, P2, P3)

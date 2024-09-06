@@ -235,3 +235,7 @@ def get_darcy_weisbach_matrix(m, wn, matrices):  # noqa: D417
         P2[ieq, flow_index, flow_index] -= scaling * k2.value
 
     return (P0, P1, P2)
+
+
+def get_pipe_design_darcy_weisbach_matrix(m, wn, matrices):
+    raise NotImplementedError("Not yet")
