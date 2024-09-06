@@ -335,7 +335,7 @@ class QuboPolynomialSolver(object):
         # flatten solution
         sol = self.flatten_solution_vector(sol)
 
-        # convert back to SI if DW
+        # convert back to SI
         sol = self.convert_solution_to_si(sol)
 
         return sol
