@@ -293,6 +293,6 @@ def get_pipe_design_darcy_wesibach_matrix(m, wn, matrices):  # noqa: D417
             P2[ieq, flow_index, pipe_idx + num_continuous_var] -= pipe_coefs[1]
             P3[
                 ieq, flow_index, flow_index, pipe_idx + num_continuous_var
-            ] -= -pipe_coefs[2]
+            ] -= pipe_coefs[2]
 
     return (P0, P1, P2, P3)

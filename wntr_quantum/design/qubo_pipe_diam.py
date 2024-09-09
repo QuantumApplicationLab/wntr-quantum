@@ -306,15 +306,29 @@ class QUBODesignPipeDiameter(object):
         num_pipes = self.wn.num_pipes
         num_vars = num_heads + num_pipes
 
-        p0 = P0[:num_vars].reshape(
-            -1,
-        )
-        p1 = P1[:num_vars, :num_vars]
-        params = np.array([0] * num_vars + parameters)
-        p3 = (params * P3).sum(-1)[:, :num_vars, :num_vars].sum(-1)[:num_vars]
+        if self.wn.options.hydraulic.headloss == "C-M":
+            p0 = P0[:num_vars].reshape(
+                -1,
+            )
+            p1 = P1[:num_vars, :num_vars]
+            params = np.array([0] * num_vars + parameters)
+            p2 = (params * P3).sum(-1)[:, :num_vars, :num_vars].sum(-1)[:num_vars]
+
+        elif self.wn.options.hydraulic.headloss == "D-W":
+            p0 = P0[:num_vars].reshape(
+                -1,
+            )
+            p0 += (parameters * P1[:num_vars, num_vars:]).sum(-1)
+
+            p1 = P1[:num_vars, :num_vars]
+            p1 += (parameters * P2[:num_vars, :num_vars, num_vars:]).sum(-1)
+
+            params = np.array([0] * num_vars + parameters)
+            p2 = (params * P3).sum(-1)[:, :num_vars, :num_vars].sum(-1)[:num_vars]
+            # print(p0, p1, p2)
 
         def func(input):
-            return p0 + p1 @ input + (p3 @ (input * input))
+            return p0 + p1 @ input + (p2 @ (input * input))
 
         initial_point = np.random.rand(num_vars)
         res = newton_raphson(func, initial_point)
