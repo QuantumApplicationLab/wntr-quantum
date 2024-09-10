@@ -71,7 +71,7 @@ def dw_fit(roughness, diameter, plot=False, convert_to_us_unit=False):
     return np.array(res)
 
 
-def evlaluate_fit(coeffs, flow):
+def evaluate_fit(coeffs, flow):
     """Evaluate the fit.
 
     Args:
@@ -88,7 +88,7 @@ if __name__ == "__main__":
     # res = dw_fit(
     #     roughness=0.000164, diameter=0.820210, plot=True, convert_to_us_unit=False
     # )
-    # print(evlaluate_fit(res, 1.766))
+    # print(evaluate_fit(res, 1.766))
     roughness = 0.164
     DIAMS = np.linspace(1, 24, 25)
     RES = []

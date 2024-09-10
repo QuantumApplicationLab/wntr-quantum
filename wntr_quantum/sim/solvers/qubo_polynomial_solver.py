@@ -47,6 +47,10 @@ class QuboPolynomialSolver(object):
             [self.sol_vect_flows, self.sol_vect_heads]
         )
 
+        # init other attributes
+        self.matrices = None
+        self.qubo = None
+
     def verify_encoding(self):
         """Print info regarding the encodings."""
         hres = self.head_encoding.get_average_precision()
@@ -135,8 +139,6 @@ class QuboPolynomialSolver(object):
         Args:
             solution (np.array): solution to be benchmarked
             reference_solution (np.array): reference solution
-            qubo (QUBOPS_MIXED): QUBOPS_MIXED instance
-            bqm (dimod.BQM): BQM from dimod
         """
         reference_solution = self.convert_solution_from_si(reference_solution)
         solution = self.convert_solution_from_si(solution)
@@ -258,6 +260,9 @@ class QuboPolynomialSolver(object):
     def load_data_in_model(model: Model, data: np.ndarray):
         """Loads some data in the model.
 
+        Remark:
+            This routine replaces `load_var_values_from_x` without reordering the vector elements
+
         Args:
             model (Model): AML model from WNTR
             data (np.ndarray): data to load
@@ -335,7 +340,7 @@ class QuboPolynomialSolver(object):
         # flatten solution
         sol = self.flatten_solution_vector(sol)
 
-        # convert back to SI if DW
+        # convert back to SI
         sol = self.convert_solution_to_si(sol)
 
         return sol
