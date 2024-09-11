@@ -71,6 +71,8 @@ class QuboPolynomialSolver(object):
         # init other attributes
         self.matrices = None
         self.qubo = None
+        self.flow_index_mapping = None
+        self.head_index_mapping = None
 
     def verify_encoding(self):
         """Print info regarding the encodings."""
@@ -79,7 +81,10 @@ class QuboPolynomialSolver(object):
         fres = self.flow_encoding.get_average_precision()
         fvalues = np.sort(self.flow_encoding.get_possible_values())
         print("Head Encoding : %f => %f (res: %f)" % (hvalues[0], hvalues[-1], hres))
-        print("Flow Encoding : %f => %f (res: %f)" % (-fvalues[0], fvalues[-1], fres))
+        print(
+            "Flow Encoding : %f => %f | %f => %f (res: %f)"
+            % (-fvalues[-1], -fvalues[0], fvalues[0], fvalues[-1], fres)
+        )
 
     def verify_solution(self, input: np.ndarray) -> np.ndarray:
         """Computes the rhs vector associate with the input.
@@ -90,14 +95,15 @@ class QuboPolynomialSolver(object):
         Returns:
             np.ndarray: RHS vector
         """
-        P0, P1, P2 = self.matrices
-
+        P0, P1, P2, P3 = self.matrices
+        num_pipes = self.wn.num_pipes
         p0 = P0.reshape(
             -1,
         )
-        p1 = P1
-        p2 = P2.sum(-1)
-        return p0 + p1 @ input + (p2 @ (input * input))
+        p1 = P1[:, num_pipes:] + P2.sum(1)[:, num_pipes:]
+        p2 = P3.sum(1)[:, num_pipes:, num_pipes:].sum(-1)
+        sign = np.sign(input)
+        return p0 + p1 @ input + (p2 @ (sign * input * input))
 
     def classical_solutions(
         self, max_iter: int = 100, tol: float = 1e-10
@@ -111,7 +117,7 @@ class QuboPolynomialSolver(object):
         Returns:
             np.ndarray: _description_
         """
-        P0, P1, P2 = self.matrices
+        P0, P1, P2, P3 = self.matrices
         num_heads = self.wn.num_junctions
         num_pipes = self.wn.num_pipes
         num_vars = num_heads + num_pipes
@@ -119,11 +125,12 @@ class QuboPolynomialSolver(object):
         p0 = P0.reshape(
             -1,
         )
-        p1 = P1
-        p2 = P2.sum(-1)
+        p1 = P1[:, num_pipes:] + P2.sum(1)[:, num_pipes:]
+        p2 = P3.sum(1)[:, num_pipes:, num_pipes:].sum(-1)
 
         def func(input):
-            return p0 + p1 @ input + (p2 @ (input * input))
+            sign = np.sign(input)
+            return p0 + p1 @ input + (p2 @ (sign * input * input))
 
         initial_point = np.random.rand(num_vars)
         res = newton_raphson(func, initial_point, max_iter=max_iter, tol=tol)
@@ -203,7 +210,7 @@ class QuboPolynomialSolver(object):
             Tuple: Matrices of the on linear system
         """
         num_equations = len(list(model.cons()))
-        num_variables = len(list(model.vars()))
+        num_variables = 2 * len(model.flow) + len(model.head)
 
         # must transform that to coo
         P0 = np.zeros((num_equations, 1))
@@ -214,14 +221,26 @@ class QuboPolynomialSolver(object):
 
         # get the mass balance
         matrices = get_mass_balance_qubops_matrix(
-            model, self.wn, matrices, convert_to_us_unit=True
+            model, self.wn, matrices, self.flow_index_mapping, convert_to_us_unit=True
         )
 
         # get the headloss matrix contributions
         if self.wn.options.hydraulic.headloss == "C-M":
-            matrices = get_chezy_manning_qubops_matrix(model, self.wn, matrices)
+            matrices = get_chezy_manning_qubops_matrix(
+                model,
+                self.wn,
+                matrices,
+                self.flow_index_mapping,
+                self.head_index_mapping,
+            )
         elif self.wn.options.hydraulic.headloss == "D-W":
-            matrices = get_darcy_weisbach_qubops_matrix(model, self.wn, matrices)
+            matrices = get_darcy_weisbach_qubops_matrix(
+                model,
+                self.wn,
+                matrices,
+                self.flow_index_mapping,
+                self.head_index_mapping,
+            )
         else:
             raise ValueError("Calculation only possible with C-M or D-W")
         return matrices
@@ -261,6 +280,21 @@ class QuboPolynomialSolver(object):
         for ih in range(num_pipes, num_pipes + num_heads):
             new_sol[ih] = from_si(FlowUnits.CFS, solution[ih], HydParam.Length)
         return new_sol
+
+    @staticmethod
+    def combine_flow_values(solution: List) -> List:
+        """Combine the values of the flow sign*abs.
+
+        Args:
+            solution (List): solution vector
+
+        Returns:
+            List: solution vector
+        """
+        flow = []
+        for sign, abs in zip(solution[0], solution[1]):
+            flow.append(sign * abs)
+        return flow + solution[2]
 
     @staticmethod
     def flatten_solution_vector(solution: Tuple) -> List:
@@ -312,23 +346,30 @@ class QuboPolynomialSolver(object):
         Args:
             model (Model): the AML Model
         """
+        # init the idx
+        idx = 0
+
+        # number of variables that are flows
+        num_flow_var = len(model.flow)
+
         # get the indices for the sign/abs value of the flow
         self.flow_index_mapping = OrderedDict()
-        for idx, val in model.flow.items():
+        for _, val in model.flow.items():
             if val.name not in self.flow_index_mapping:
                 self.flow_index_mapping[val.name] = {
                     "sign": None,
                     "absolute_value": None,
                 }
-            self.flow_index_mapping[val.name]["sign"] = int(idx) - 1
-            self.flow_index_mapping[val.name]["absolute_value"] = (
-                int(idx) + len(model.flow) - 1
-            )
+            self.flow_index_mapping[val.name]["sign"] = idx
+            self.flow_index_mapping[val.name]["absolute_value"] = idx + num_flow_var
+            idx += 1
 
         # get the indices for the heads
+        idx = 0
         self.head_index_mapping = OrderedDict()
-        for idx, val in model.head.items():
-            self.head_index_mapping[val.name] = 2 * len(model.flow) + int(idx) - 1
+        for _, val in model.head.items():
+            self.head_index_mapping[val.name] = 2 * num_flow_var + idx
+            idx += 1
 
     def solve(  # noqa: D417
         self, model: Model, strength: float = 1e6, num_reads: int = 10000, **options
@@ -385,8 +426,8 @@ class QuboPolynomialSolver(object):
         # decode
         sol = self.qubo.decode_solution(sampleset.lowest().record[0][0])
 
-        # flatten solution
-        sol = self.flatten_solution_vector(sol)
+        # combine the sign*abs values for the flow
+        sol = self.combine_flow_values(sol)
 
         # convert back to SI
         sol = self.convert_solution_to_si(sol)
