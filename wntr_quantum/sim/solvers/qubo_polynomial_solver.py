@@ -204,7 +204,7 @@ class QuboPolynomialSolver(object):
         print("diff       : ", np.array(data_ref[0]) - np.array(data_sol[0]))
         print("\n")
         print("E sol   : ", esol)
-        print("R ref   : ", eref)
+        print("E ref   : ", eref)
         print("Delta E :", esol - eref)
         print("\n")
         res_sol = np.linalg.norm(
@@ -449,10 +449,10 @@ class QuboPolynomialSolver(object):
         self.qubo.qubo_dict = self.qubo.create_bqm(matrices, strength=strength)
 
         # sample
-        sampleset = self.qubo.sample_bqm(self.qubo.qubo_dict, num_reads=num_reads)
+        self.sampleset = self.qubo.sample_bqm(self.qubo.qubo_dict, num_reads=num_reads)
 
         # decode
-        sol = self.qubo.decode_solution(sampleset.lowest().record[0][0])
+        sol = self.qubo.decode_solution(self.sampleset.lowest().record[0][0])
 
         # combine the sign*abs values for the flow
         sol = self.combine_flow_values(sol)
