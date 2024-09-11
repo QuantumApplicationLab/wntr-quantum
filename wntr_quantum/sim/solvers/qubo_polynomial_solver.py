@@ -4,7 +4,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import sparse
 from quantum_newton_raphson.newton_raphson import newton_raphson
-from qubops.encodings import BaseQbitEncoding
+from qubops.encodings import BaseQbitEncoding, PositiveQbitEncoding
 from qubops.mixed_solution_vector import MixedSolutionVector_V2 as MixedSolutionVector
 from qubops.qubops_mixed_vars import QUBOPS_MIXED
 from qubops.solution_vector import SolutionVector_V2 as SolutionVector
@@ -17,7 +17,7 @@ from wntr.sim.aml import Model
 from wntr.sim.solvers import SolverStatus
 from ..models.chezy_manning import get_chezy_manning_matrix
 from ..models.darcy_weisbach import get_darcy_weisbach_matrix
-from ..models.mass_balance import get_mass_balance_matrix
+from ..models.mass_balance import get_mass_balance_qubops_matrix
 
 
 class QuboPolynomialSolver(object):
@@ -33,18 +33,36 @@ class QuboPolynomialSolver(object):
 
         Args:
             wn (WaterNetworkModel): water network
-            flow_encoding (qubops.encodings.BaseQbitEncoding): binary encoding for the flow
+            flow_encoding (qubops.encodings.BaseQbitEncoding): binary encoding for the bsolute value of the flow
             head_encoding (qubops.encodings.BaseQbitEncoding): binary encoding for the head
         """
         self.wn = wn
 
-        # create the encoding vectors
+        # create the encoding vectors for the sign of the flows
+        self.sign_flow_encoding = PositiveQbitEncoding(
+            nqbit=1, step=2, offset=-1, var_base_name="x"
+        )
+
+        # store the encoding of the flow
         self.flow_encoding = flow_encoding
+        if np.min(self.flow_encoding.get_possible_values()) < 0:
+            raise ValueError(
+                "The encoding of the flows must only take positive values."
+            )
+
+        # store the encoding of the head
         self.head_encoding = head_encoding
+
+        # create the solution vectors
+        self.sol_vect_signs = SolutionVector(
+            wn.num_pipes, encoding=self.sign_flow_encoding
+        )
         self.sol_vect_flows = SolutionVector(wn.num_pipes, encoding=flow_encoding)
         self.sol_vect_heads = SolutionVector(wn.num_junctions, encoding=head_encoding)
+
+        # create the mixed solution vector
         self.mixed_solution_vector = MixedSolutionVector(
-            [self.sol_vect_flows, self.sol_vect_heads]
+            [self.sol_vect_signs, self.sol_vect_flows, self.sol_vect_heads]
         )
 
         # init other attributes
@@ -58,7 +76,7 @@ class QuboPolynomialSolver(object):
         fres = self.flow_encoding.get_average_precision()
         fvalues = np.sort(self.flow_encoding.get_possible_values())
         print("Head Encoding : %f => %f (res: %f)" % (hvalues[0], hvalues[-1], hres))
-        print("Flow Encoding : %f => %f (res: %f)" % (fvalues[0], fvalues[-1], fres))
+        print("Flow Encoding : %f => %f (res: %f)" % (-fvalues[0], fvalues[-1], fres))
 
     def verify_solution(self, input: np.ndarray) -> np.ndarray:
         """Computes the rhs vector associate with the input.
@@ -192,7 +210,7 @@ class QuboPolynomialSolver(object):
         matrices = (P0, P1, P2)
 
         # get the mass balance
-        matrices = get_mass_balance_matrix(
+        matrices = get_mass_balance_qubops_matrix(
             model, self.wn, matrices, convert_to_us_unit=True
         )
 
