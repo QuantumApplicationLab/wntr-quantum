@@ -4,7 +4,7 @@ from wntr.epanet.util import from_si
 
 
 def get_mass_balance_qubops_matrix(
-    m, wn, matrices, convert_to_us_unit=False
+    m, wn, matrices, flow_index_mapping, convert_to_us_unit=False
 ):  # noqa: D417
     """Create the matrices for the mass balance equation.
 
@@ -12,16 +12,13 @@ def get_mass_balance_qubops_matrix(
         m (aml.Model): The AML model of the network
         wn (WaternNetwork): th water network object
         matrices (Tuple): The qubops matrices of the network
+        flow_index_mapping (Dict): A dict to map the flow model variables to the qubops matrices
         convert_to_us_unit (bool, optional): Convert the inut to US units. Defaults to False.
 
     Returns:
         Tuple: The qubops matrices of the network
     """
-    P0, P1, P2 = matrices
-
-    continuous_var_name = [v.name for v in list(m.vars())]
-    var_names = continuous_var_name
-
+    P0, P1, P2, P3 = matrices
     index_over = wn.junction_name_list
 
     for ieq, node_name in enumerate(index_over):
@@ -36,14 +33,16 @@ def get_mass_balance_qubops_matrix(
                 P0[ieq, 0] += m.expected_demand[node_name].value
 
             for link_name in wn.get_links_for_node(node_name, flag="INLET"):
-                link_index = var_names.index(m.flow[link_name].name)
-                P1[ieq, link_index] -= 1
+                sign_idx = flow_index_mapping[m.flow[link_name].name]["sign"]
+                flow_idx = flow_index_mapping[m.flow[link_name].name]["absolute_value"]
+                P2[ieq, sign_idx, flow_idx] -= 1
 
             for link_name in wn.get_links_for_node(node_name, flag="OUTLET"):
-                link_index = var_names.index(m.flow[link_name].name)
-                P1[ieq, link_index] += 1
+                sign_idx = flow_index_mapping[m.flow[link_name].name]["sign"]
+                flow_idx = flow_index_mapping[m.flow[link_name].name]["absolute_value"]
+                P2[ieq, sign_idx, flow_idx] += 1
 
-    return P0, P1, P2
+    return P0, P1, P2, P3
 
 
 def get_mass_balance_constraint_design(m, wn, matrices):  # noqa: D417

@@ -1,10 +1,13 @@
+from collections import OrderedDict
+from typing import Dict
 from typing import List
 from typing import Tuple
 import matplotlib.pyplot as plt
 import numpy as np
 import sparse
 from quantum_newton_raphson.newton_raphson import newton_raphson
-from qubops.encodings import BaseQbitEncoding, PositiveQbitEncoding
+from qubops.encodings import BaseQbitEncoding
+from qubops.encodings import PositiveQbitEncoding
 from qubops.mixed_solution_vector import MixedSolutionVector_V2 as MixedSolutionVector
 from qubops.qubops_mixed_vars import QUBOPS_MIXED
 from qubops.solution_vector import SolutionVector_V2 as SolutionVector
@@ -15,8 +18,8 @@ from wntr.epanet.util import to_si
 from wntr.network import WaterNetworkModel
 from wntr.sim.aml import Model
 from wntr.sim.solvers import SolverStatus
-from ..models.chezy_manning import get_chezy_manning_matrix
-from ..models.darcy_weisbach import get_darcy_weisbach_matrix
+from ..models.chezy_manning import get_chezy_manning_qubops_matrix
+from ..models.darcy_weisbach import get_darcy_weisbach_qubops_matrix
 from ..models.mass_balance import get_mass_balance_qubops_matrix
 
 
@@ -206,8 +209,8 @@ class QuboPolynomialSolver(object):
         P0 = np.zeros((num_equations, 1))
         P1 = np.zeros((num_equations, num_variables))
         P2 = np.zeros((num_equations, num_variables, num_variables))
-
-        matrices = (P0, P1, P2)
+        P3 = np.zeros((num_equations, num_variables, num_variables, num_variables))
+        matrices = (P0, P1, P2, P3)
 
         # get the mass balance
         matrices = get_mass_balance_qubops_matrix(
@@ -216,9 +219,9 @@ class QuboPolynomialSolver(object):
 
         # get the headloss matrix contributions
         if self.wn.options.hydraulic.headloss == "C-M":
-            matrices = get_chezy_manning_matrix(model, self.wn, matrices)
+            matrices = get_chezy_manning_qubops_matrix(model, self.wn, matrices)
         elif self.wn.options.hydraulic.headloss == "D-W":
-            matrices = get_darcy_weisbach_matrix(model, self.wn, matrices)
+            matrices = get_darcy_weisbach_qubops_matrix(model, self.wn, matrices)
         else:
             raise ValueError("Calculation only possible with C-M or D-W")
         return matrices
@@ -303,6 +306,30 @@ class QuboPolynomialSolver(object):
             data.append(v.value)
         return data
 
+    def create_index_mapping(self, model: Model) -> None:
+        """Creates the index maping for qubops matrices.
+
+        Args:
+            model (Model): the AML Model
+        """
+        # get the indices for the sign/abs value of the flow
+        self.flow_index_mapping = OrderedDict()
+        for idx, val in model.flow.items():
+            if val.name not in self.flow_index_mapping:
+                self.flow_index_mapping[val.name] = {
+                    "sign": None,
+                    "absolute_value": None,
+                }
+            self.flow_index_mapping[val.name]["sign"] = int(idx) - 1
+            self.flow_index_mapping[val.name]["absolute_value"] = (
+                int(idx) + len(model.flow) - 1
+            )
+
+        # get the indices for the heads
+        self.head_index_mapping = OrderedDict()
+        for idx, val in model.head.items():
+            self.head_index_mapping[val.name] = 2 * len(model.flow) + int(idx) - 1
+
     def solve(  # noqa: D417
         self, model: Model, strength: float = 1e6, num_reads: int = 10000, **options
     ) -> Tuple:
@@ -316,6 +343,9 @@ class QuboPolynomialSolver(object):
         Returns:
             Tuple: Succes message
         """
+        # creates the index mapping for the variables in  the solution vectors
+        self.create_index_mapping(model)
+
         # creates the matrices
         self.matrices = self.initialize_matrices(model)
 
