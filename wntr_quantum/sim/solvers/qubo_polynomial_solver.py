@@ -135,12 +135,11 @@ class QuboPolynomialSolver(object):
         initial_point = np.random.rand(num_vars)
         res = newton_raphson(func, initial_point, max_iter=max_iter, tol=tol)
         sol = res.solution
-        assert np.allclose(func(sol), 0)
-
+        converged = np.allclose(func(sol), 0)
         # convert back to SI
         sol = self.convert_solution_to_si(sol)
 
-        return sol
+        return (sol, converged)
 
     @staticmethod
     def plot_solution_vs_reference(
@@ -332,8 +331,7 @@ class QuboPolynomialSolver(object):
             sol_tmp += s
         return sol_tmp
 
-    @staticmethod
-    def load_data_in_model(model: Model, data: np.ndarray):
+    def load_data_in_model(self, model: Model, data: np.ndarray):
         """Loads some data in the model.
 
         Remark:
@@ -343,11 +341,15 @@ class QuboPolynomialSolver(object):
             model (Model): AML model from WNTR
             data (np.ndarray): data to load
         """
-        for iv, v in enumerate(model.vars()):
-            v.value = data[iv]
+        shift_head_idx = self.wn.num_links
+        for var in model.vars():
+            if var.name in self.flow_index_mapping:
+                idx = self.flow_index_mapping[var.name]["sign"]
+            elif var.name in self.head_index_mapping:
+                idx = self.head_index_mapping[var.name] - shift_head_idx
+            var.value = data[idx]
 
-    @staticmethod
-    def extract_data_from_model(model: Model) -> np.ndarray:
+    def extract_data_from_model(self, model: Model) -> np.ndarray:
         """Loads some data in the model.
 
         Args:
@@ -356,9 +358,14 @@ class QuboPolynomialSolver(object):
         Returns:
             np.ndarray: data extracted from model
         """
-        data = []
-        for v in model.vars():
-            data.append(v.value)
+        data = [None] * len(list(model.vars()))
+        shift_head_idx = self.wn.num_links
+        for var in model.vars():
+            if var.name in self.flow_index_mapping:
+                idx = self.flow_index_mapping[var.name]["sign"]
+            elif var.name in self.head_index_mapping:
+                idx = self.head_index_mapping[var.name] - shift_head_idx
+            data[idx] = var.value
         return data
 
     def create_index_mapping(self, model: Model) -> None:
