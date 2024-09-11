@@ -161,6 +161,18 @@ class QuboPolynomialSolver(object):
         plt.grid(which="minor", lw=0.1)
         plt.loglog()
 
+    def decompose_solution(self, solution):
+        """Decompose solution into sign/abs flow and head values.
+
+        Args:
+            solution (np.array): solution
+        """
+        num_flows = self.wn.num_links
+        flow_values = solution[:num_flows]
+        head_values = solution[num_flows:]
+        tmp = np.append(np.sign(flow_values), np.abs(flow_values))
+        return np.append(tmp, head_values)
+
     def diagnostic_solution(self, solution: np.ndarray, reference_solution: np.ndarray):
         """Benchmark a solution against the exact reference solution.
 
@@ -171,8 +183,13 @@ class QuboPolynomialSolver(object):
         reference_solution = self.convert_solution_from_si(reference_solution)
         solution = self.convert_solution_from_si(solution)
 
+        reference_solution = self.decompose_solution(reference_solution)
+        solution = self.decompose_solution(solution)
+
         data_ref, eref = self.qubo.compute_energy(reference_solution)
         data_sol, esol = self.qubo.compute_energy(solution)
+
+        num_pipes = self.wn.num_links
 
         np.set_printoptions(precision=3)
         self.verify_encoding()
@@ -191,8 +208,12 @@ class QuboPolynomialSolver(object):
         print("R ref   : ", eref)
         print("Delta E :", esol - eref)
         print("\n")
-        res_sol = np.linalg.norm(self.verify_solution(np.array(data_sol[0])))
-        res_ref = np.linalg.norm(self.verify_solution(np.array(data_ref[0])))
+        res_sol = np.linalg.norm(
+            self.verify_solution(np.array(data_sol[0][num_pipes:]))
+        )
+        res_ref = np.linalg.norm(
+            self.verify_solution(np.array(data_ref[0][num_pipes:]))
+        )
         print("Residue sol   : ", res_sol)
         print("Residue ref   : ", res_ref)
         print("Delta Residue :", res_sol - res_ref)
