@@ -205,59 +205,64 @@ def get_chezy_manning_matrix(m, wn, matrices):  # noqa: D417
     return (P0, P1, P2)
 
 
-def get_pipe_design_chezy_manning_matrix(m, wn, matrices):  # noqa: D417
-    """Adds a mass balance to the model for the specified junctions.
+def get_pipe_design_chezy_manning_qubops_matrix(
+    m, wn, matrices, flow_index_mapping, head_index_mapping
+):  # noqa: D417
+    """Create the matrices for chezy manning headloss approximation.
 
-    Parameters
-    ----------
-    m: wntr.aml.aml.aml.Model
-    wn: wntr.network.model.WaterNetworkModel
-    updater: ModelUpdater
-    index_over: list of str
-        list of pipe names; default is all pipes in wn
+    Args:
+        m (aml.Model): The AML model of the network
+        wn (WaternNetwork): th water network object
+        matrices (Tuple): The qubops matrices of the network
+        flow_index_mapping (Dict): A dict to map the flow model variables to the qubops matrices
+        head_index_mapping (Dict): A dict to map the head model variables to the qubops matrices
+        convert_to_us_unit (bool, optional): Convert the inut to US units. Defaults to False.
+
+    Returns:
+        Tuple: The qubops matrices of the network
     """
-    P0, P1, P2, P3 = matrices
+    P0, P1, P2, P3, P4 = matrices
+    num_continuous_var = 2 * len(m.flow) + len(m.head)
 
-    continuous_var_name = [v.name for v in list(m.vars())]
-    num_continuous_var = len(continuous_var_name)
-    # discrete_var_name = [v.name for k, v in m.cm_resistance.items()]
-    var_names = continuous_var_name  # + discrete_var_name
+    for ieq0, link_name in enumerate(wn.pipe_name_list):
 
-    index_over = wn.pipe_name_list
-
-    for ieq0, link_name in enumerate(index_over):
-
+        # index of the pipe equation
         ieq = ieq0 + len(wn.junction_name_list)
-        link = wn.get_link(link_name)
-        f = m.flow[link_name]
-        flow_index = var_names.index(f.name)
 
+        # link info
+        link = wn.get_link(link_name)
+
+        # get start/end node info
         start_node_name = link.start_node_name
         end_node_name = link.end_node_name
-
         start_node = wn.get_node(start_node_name)
         end_node = wn.get_node(end_node_name)
 
+        # linear term (start head value) of the headloss approximation
         if isinstance(start_node, wntr.network.Junction):
-            start_h = m.head[start_node_name]
-            start_node_index = var_names.index(start_h.name)
+            start_node_index = head_index_mapping[m.head[start_node_name].name]
             P1[ieq, start_node_index] = 1
         else:
             start_h = m.source_head[start_node_name]
             P0[ieq, 0] += from_si(FlowUnits.CFS, start_h.value, HydParam.Length)
 
+        # linear term (end head values) of the headloss approximation
         if isinstance(end_node, wntr.network.Junction):
-            end_h = m.head[end_node_name]
-            end_node_index = var_names.index(end_h.name)
+            end_node_index = head_index_mapping[m.head[end_node_name].name]
             P1[ieq, end_node_index] = -1
         else:
             end_h = m.source_head[end_node_name]
             P0[ieq, 0] -= from_si(FlowUnits.CFS, end_h.value, HydParam.Length)
 
+        # non linear term (resistance sign flow^2) of the headloss approximation
+        sign_index = flow_index_mapping[m.flow[link_name].name]["sign"]
+        flow_index = flow_index_mapping[m.flow[link_name].name]["absolute_value"]
         for pipe_coefs, pipe_idx in zip(
             m.pipe_coefficients[link_name].value,
             m.pipe_coefficients_indices[link_name].value,
         ):
-            P3[ieq, flow_index, flow_index, pipe_idx + num_continuous_var] = -pipe_coefs
+            P4[
+                ieq, sign_index, flow_index, flow_index, pipe_idx + num_continuous_var
+            ] = -pipe_coefs
 
-    return (P0, P1, P2, P3)
+    return (P0, P1, P2, P3, P4)

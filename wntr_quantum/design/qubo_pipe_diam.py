@@ -19,10 +19,10 @@ from wntr.sim.aml import Model
 from wntr.sim.solvers import SolverStatus
 from ..sim.hydraulics import create_hydraulic_model
 from ..sim.models.chezy_manning import cm_resistance_value
-from ..sim.models.chezy_manning import get_pipe_design_chezy_manning_matrix
+from ..sim.models.chezy_manning import get_pipe_design_chezy_manning_qubops_matrix
 from ..sim.models.darcy_weisbach import dw_resistance_value
-from ..sim.models.darcy_weisbach import get_pipe_design_darcy_wesibach_matrix
-from ..sim.models.mass_balance import get_mass_balance_matrix
+from ..sim.models.darcy_weisbach import get_pipe_design_darcy_wesibach_qubops_matrix
+from ..sim.models.mass_balance import get_mass_balance_qubops_matrix
 
 
 class QUBODesignPipeDiameter(object):
@@ -54,15 +54,27 @@ class QUBODesignPipeDiameter(object):
         self.pipe_diameters = [p / 1000 for p in pipe_diameters]
         self.num_diameters = len(pipe_diameters)
 
-        # encodings of the head/flow variables
-        self.flow_encoding = flow_encoding
-        self.head_encoding = head_encoding
-        self.sol_vect_flows = SolutionVector(wn.num_pipes, encoding=flow_encoding)
-        self.sol_vect_heads = SolutionVector(wn.num_junctions, encoding=head_encoding)
+        # create the encoding vectors for the sign of the flows
+        self.sign_flow_encoding = PositiveQbitEncoding(
+            nqbit=1, step=2, offset=-1, var_base_name="x"
+        )
 
-        # lower bound for the pressure
-        self.head_lower_bound = head_lower_bound
-        self.head_upper_bound = 10 * head_lower_bound
+        # create the solution vector for the sign
+        self.sol_vect_signs = SolutionVector(
+            wn.num_pipes, encoding=self.sign_flow_encoding
+        )
+
+        # store the flow encoding and create solution vector
+        self.flow_encoding = flow_encoding
+        self.sol_vect_flows = SolutionVector(wn.num_pipes, encoding=flow_encoding)
+        if np.min(self.flow_encoding.get_possible_values()) < 0:
+            raise ValueError(
+                "The encoding of the flows must only take positive values."
+            )
+
+        # store the heqd encoding and create solution vector
+        self.head_encoding = head_encoding
+        self.sol_vect_heads = SolutionVector(wn.num_junctions, encoding=head_encoding)
 
         # one hot encoding for the pipe coefficients
         self.num_hot_encoding = wn.num_pipes * self.num_diameters
@@ -71,7 +83,12 @@ class QUBODesignPipeDiameter(object):
 
         # mixed solution vector
         self.mixed_solution_vector = MixedSolutionVector(
-            [self.sol_vect_flows, self.sol_vect_heads, self.sol_vect_pipes]
+            [
+                self.sol_vect_signs,
+                self.sol_vect_flows,
+                self.sol_vect_heads,
+                self.sol_vect_pipes,
+            ]
         )
 
         # basic hydraulic model
@@ -82,6 +99,15 @@ class QUBODesignPipeDiameter(object):
 
         # weight for the cost equation
         self.weight_cost = weight_cost
+
+        # lower bound for the pressure
+        self.head_lower_bound = head_lower_bound
+        self.head_upper_bound = 10 * head_lower_bound  # is that enough ?
+
+        # store other attributes
+        self.qubo = None
+        self.flow_index_mapping = None
+        self.head_index_mapping = None
 
         # compute the polynomial matrices
         self.matrices = self.initialize_matrices()
@@ -231,7 +257,10 @@ class QUBODesignPipeDiameter(object):
         fres = self.flow_encoding.get_average_precision()
         fvalues = np.sort(self.flow_encoding.get_possible_values())
         print("Head Encoding : %f => %f (res: %f)" % (hvalues[0], hvalues[-1], hres))
-        print("Flow Encoding : %f => %f (res: %f)" % (fvalues[0], fvalues[-1], fres))
+        print(
+            "Flow Encoding : %f => %f | %f => %f (res: %f)"
+            % (-fvalues[-1], -fvalues[0], fvalues[0], fvalues[-1], fres)
+        )
 
     def verify_solution(self, input, params):
         """Computes the rhs vector associate with the input.
@@ -343,7 +372,7 @@ class QUBODesignPipeDiameter(object):
         Args:
             matrices (tuple): The matrices
         """
-        P0, P1, P2, P3 = matrices
+        P0, P1, P2, P3, P4 = matrices
 
         # loop over all the pipe coeffs
         istart = self.sol_vect_flows.size + self.sol_vect_heads.size
@@ -356,33 +385,57 @@ class QUBODesignPipeDiameter(object):
                 self.model.pipe_coefficients_indices[link_name].value,
             ):
                 P1[-1, istart + pipe_idx] = self.weight_cost * pipe_cost
-        return P0, P1, P2, P3
+        return P0, P1, P2, P3, P4
 
     def initialize_matrices(self) -> Tuple:
-        """_summary_."""
+        """Creates the matrices of the polynomial system of equation.
+
+        math ::
+
+
+        """
         num_equations = len(list(self.model.cons())) + 1  # +1 for cost equation
-        num_continuous_variables = len(list(self.model.vars()))
-        num_variables = num_continuous_variables + self.num_hot_encoding
+        num_variables = (
+            2 * len(self.model.flow) + len(self.model.head) + self.num_hot_encoding
+        )
 
         # must transform that to coo
         P0 = np.zeros((num_equations, 1))
         P1 = np.zeros((num_equations, num_variables))
         P2 = np.zeros((num_equations, num_variables, num_variables))
         P3 = np.zeros((num_equations, num_variables, num_variables, num_variables))
-
-        matrices = (P0, P1, P2, P3)
-        (P0, P1, P2) = get_mass_balance_matrix(
-            self.model, self.wn, (P0, P1, P2), convert_to_us_unit=True
+        P4 = np.zeros(
+            (num_equations, num_variables, num_variables, num_variables, num_variables)
         )
+
+        # get the mass balance matrix
+        (P0, P1, P2, P3) = get_mass_balance_qubops_matrix(
+            self.model,
+            self.wn,
+            (P0, P1, P2, P3),
+            self.flow_index_mapping,
+            convert_to_us_unit=True,
+        )
+
+        # shortcut
+        matrices = (P0, P1, P2, P3, P4)
 
         # get the headloss matrix contributions
         if self.wn.options.hydraulic.headloss == "C-M":
-            matrices = get_pipe_design_chezy_manning_matrix(
-                self.model, self.wn, matrices
+            matrices = get_pipe_design_chezy_manning_qubops_matrix(
+                self.model,
+                self.wn,
+                matrices,
+                self.flow_index_mapping,
+                self.head_index_mapping,
             )
         elif self.wn.options.hydraulic.headloss == "D-W":
-            matrices = get_pipe_design_darcy_wesibach_matrix(
-                self.model, self.wn, matrices
+            matrices = get_pipe_design_darcy_wesibach_qubops_matrix(
+                self.model,
+                self.wn,
+                matrices,
+                self.flow_index_mapping,
+                self.head_index_mapping,
             )
         else:
             raise ValueError("Calculation only possible with C-M or D-W")
@@ -427,19 +480,25 @@ class QUBODesignPipeDiameter(object):
 
         return total_price, pipe_diameters
 
-    @staticmethod
-    def load_data_in_model(model: Model, data: np.ndarray):
+    def load_data_in_model(self, model: Model, data: np.ndarray):
         """Loads some data in the model.
+
+        Remark:
+            This routine replaces `load_var_values_from_x` without reordering the vector elements
 
         Args:
             model (Model): AML model from WNTR
             data (np.ndarray): data to load
         """
-        for iv, v in enumerate(model.vars()):
-            v.value = data[iv]
+        shift_head_idx = self.wn.num_links
+        for var in model.vars():
+            if var.name in self.flow_index_mapping:
+                idx = self.flow_index_mapping[var.name]["sign"]
+            elif var.name in self.head_index_mapping:
+                idx = self.head_index_mapping[var.name] - shift_head_idx
+            var.value = data[idx]
 
-    @staticmethod
-    def extract_data_from_model(model: Model) -> np.ndarray:
+    def extract_data_from_model(self, model: Model) -> np.ndarray:
         """Loads some data in the model.
 
         Args:
@@ -448,9 +507,14 @@ class QUBODesignPipeDiameter(object):
         Returns:
             np.ndarray: data extracted from model
         """
-        data = []
-        for v in model.vars():
-            data.append(v.value)
+        data = [None] * len(list(model.vars()))
+        shift_head_idx = self.wn.num_links
+        for var in model.vars():
+            if var.name in self.flow_index_mapping:
+                idx = self.flow_index_mapping[var.name]["sign"]
+            elif var.name in self.head_index_mapping:
+                idx = self.head_index_mapping[var.name] - shift_head_idx
+            data[idx] = var.value
         return data
 
     def solve(  # noqa: D417
