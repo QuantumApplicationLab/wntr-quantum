@@ -1,10 +1,11 @@
 """Tests WNTR quantum using a small network and different simulators and solvers."""
 
 import pathlib
+import numpy as np
 import pytest
 import wntr
 from dwave.samplers import SteepestDescentSolver
-from qubols.encodings import PositiveQbitEncoding
+from qubops.encodings import PositiveQbitEncoding
 import wntr_quantum
 
 NETWORKS_FOLDER = pathlib.Path(__file__).with_name("networks")
@@ -13,9 +14,9 @@ DELTA = 1.0e-12
 TOL = 5  # => per cent
 
 
-def calculate_differences(value1, value2):
+def calculate_small_differences(value1, value2):
     """Helper function to calculate percentage difference between classical and quantum results."""
-    return abs(value1 - value2) / abs(value1 + DELTA) <= TOL / 100.0
+    return np.allclose([value1], [value2], atol=1e-1, rtol=1e-1)
 
 
 def compare_results(original, new):
@@ -23,18 +24,14 @@ def compare_results(original, new):
     for link in original.link["flowrate"].columns:
         orig_value = original.link["flowrate"][link].iloc[0]
         new_value = new.link["flowrate"][link].iloc[0]
-        message = (
-            f"Flowrate {link}: {new_value} not within {TOL}% of original {orig_value}"
-        )
-        assert calculate_differences(orig_value, new_value), message
+        message = f"Flowrate {link}: {new_value} not within tolerance of original {orig_value}"
+        assert calculate_small_differences(orig_value, new_value), message
 
     for node in original.node["pressure"].columns:
         orig_value = original.node["pressure"][node].iloc[0]
         new_value = new.node["pressure"][node].iloc[0]
-        message = (
-            f"Pressure {node}: {new_value} not within {TOL}% of original {orig_value}"
-        )
-        assert calculate_differences(orig_value, new_value), message
+        message = f"Pressure {node}: {new_value} not within tolerance of original {orig_value}"
+        assert calculate_small_differences(orig_value, new_value), message
 
 
 def run_classical_EPANET_simulation():

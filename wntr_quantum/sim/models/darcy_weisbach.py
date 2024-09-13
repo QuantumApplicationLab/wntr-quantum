@@ -12,7 +12,7 @@ def darcy_weisbach_constants(m):
     """Add darcy weisbach constants to the model.
 
     Args:
-        m (_type_): _description_
+        m (aml.Model): Model of the netwwork
     """
     m.dw_k = 0.025173  # 16/64.4/pi^2
     m.dw_exp = 2
@@ -20,14 +20,16 @@ def darcy_weisbach_constants(m):
 
 
 def dw_resistance_prefactor(k, roughness, diameter, diameter_exp):
-    """_summary_.
+    """Computes the resistance prefactor.
 
     Args:
-        k (_type_): _description_
-        roughness (_type_): _description_
-        exp (_type_): _description_
-        diameter (_type_): _description_
-        diameter_exp (_type_): _description_
+        k (float): scaling parameter of the approximatioj
+        roughness (float): roughness pf the pipe
+        diameter (float): dimater of the pipe
+        diameter_exp (int): exponent of the pip diameter in the approx (typically -5)
+
+    Returns:
+        Tuple(float, float, float): value of the fit to the full DW formula
     """
     return (
         k
@@ -40,19 +42,15 @@ def dw_resistance_value(k, roughness, diameter, diameter_exp, length):
     """_summary_.
 
     Args:
-        k (_type_): _description_
-        roughness (_type_): _description_
-        exp (_type_): _description_
-        diameter (_type_): _description_
-        diameter_exp (_type_): _description_
-        length (_type_): _description_
+        k (float): scaling parameter of the approximatioj
+        roughness (float): roughness pf the pipe
+        diameter (float): dimater of the pipe
+        diameter_exp (int): exponent of the pip diameter in the approx (typically -5)
+        length (float): length of the pipe
 
     Returns:
-        _type_: _description_
+        Tuple(float, float, float): value of the fit to the full DW formula
     """
-    # print("Roughness : %f" % roughness)
-    # print("diameter : %f" % diameter)
-    # print("resistance coeff : %f " % (k * (diameter**diameter_exp) * length))
     return dw_resistance_prefactor(k, roughness, diameter, diameter_exp) * length
 
 
@@ -175,65 +173,67 @@ class approx_darcy_weisbach_headloss_constraint(Definition):  # noqa: D101
             )
 
 
-def get_darcy_weisbach_matrix(m, wn, matrices):  # noqa: D417
-    """Adds a mass balance to the model for the specified junctions.
+def get_darcy_weisbach_qubops_matrix(
+    m, wn, matrices, flow_index_mapping, head_index_mapping
+):  # noqa: D417
+    """Create the matrices for chezy manning headloss approximation.
 
-    Parameters
-    ----------
-    m: wntr.aml.aml.aml.Model
-    wn: wntr.network.model.WaterNetworkModel
-    updater: ModelUpdater
-    index_over: list of str
-        list of pipe names; default is all pipes in wn
+    Args:
+        m (aml.Model): The AML model of the network
+        wn (WaternNetwork): th water network object
+        matrices (Tuple): The qubops matrices of the network
+        flow_index_mapping (Dict): A dict to map the flow model variables to the qubops matrices
+        head_index_mapping (Dict): A dict to map the head model variables to the qubops matrices
+        convert_to_us_unit (bool, optional): Convert the inut to US units. Defaults to False.
+
+    Returns:
+        Tuple: The qubops matrices of the network
     """
-    P0, P1, P2 = matrices
+    P0, P1, P2, P3 = matrices
 
-    continuous_var_name = [v.name for v in list(m.vars())]
-    # discrete_var_name = [v.name for k, v in m.dw_resistance.items()]
+    for ieq0, link_name in enumerate(wn.pipe_name_list):
 
-    var_names = continuous_var_name  # + discrete_var_name
-
-    index_over = wn.pipe_name_list
-
-    for ieq0, link_name in enumerate(index_over):
-
+        # index of the pipe equation
         ieq = ieq0 + len(wn.junction_name_list)
-        link = wn.get_link(link_name)
-        f = m.flow[link_name]
-        flow_index = var_names.index(f.name)
 
+        # get link info
+        link = wn.get_link(link_name)
+
+        # get start/end node info
         start_node_name = link.start_node_name
         end_node_name = link.end_node_name
-
         start_node = wn.get_node(start_node_name)
         end_node = wn.get_node(end_node_name)
 
+        # linear term (start head values) of the headloss approximation
         if isinstance(start_node, wntr.network.Junction):
-            start_h = m.head[start_node_name]
-            start_node_index = var_names.index(start_h.name)
-            P1[ieq, start_node_index] = 1
+            start_node_index = head_index_mapping[m.head[start_node_name].name]
+            P1[ieq, start_node_index] += 1
         else:
             start_h = m.source_head[start_node_name]
             P0[ieq, 0] += from_si(FlowUnits.CFS, start_h.value, HydParam.Length)
 
+        # linear term (end head values) of the headloss approximation
         if isinstance(end_node, wntr.network.Junction):
-            end_h = m.head[end_node_name]
-            end_node_index = var_names.index(end_h.name)
-            P1[ieq, end_node_index] = -1
+            end_node_index = head_index_mapping[m.head[end_node_name].name]
+            P1[ieq, end_node_index] -= 1
         else:
             end_h = m.source_head[end_node_name]
             P0[ieq, 0] -= from_si(FlowUnits.CFS, end_h.value, HydParam.Length)
 
+        # non linear term (sign flow^2) of headloss approximation
         k0 = m.dw_resistance_0[link_name]
         k1 = m.dw_resistance_1[link_name]
         k2 = m.dw_resistance_2[link_name]
-        # print(k0.value, k1.value, k2.value)
+
+        sign_index = flow_index_mapping[m.flow[link_name].name]["sign"]
+        flow_index = flow_index_mapping[m.flow[link_name].name]["absolute_value"]
 
         P0[ieq] -= k0.value
-        P1[ieq, flow_index] -= k1.value
-        P2[ieq, flow_index, flow_index] -= k2.value
+        P2[ieq, sign_index, flow_index] -= k1.value
+        P3[ieq, sign_index, flow_index, flow_index] -= k2.value
 
-    return (P0, P1, P2)
+    return (P0, P1, P2, P3)
 
 
 def get_pipe_design_darcy_wesibach_qubops_matrix(

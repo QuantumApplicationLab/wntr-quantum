@@ -5,7 +5,7 @@ import wntr.sim.results
 from wntr.sim.core import WNTRSimulator
 from wntr.sim.core import _Diagnostics
 from wntr.sim.core import _ValveSourceChecker
-from .hydraulics import create_hydraulic_model
+from .qubo_hydraulics import create_hydraulic_model_for_qubo
 from .solvers.qubo_polynomial_solver import QuboPolynomialSolver
 
 logger = logging.getLogger(__name__)
@@ -52,13 +52,8 @@ class FullQuboPolynomialSimulator(WNTRSimulator):
             wntr.sim.solvers.NewtonSolver or Scipy solver
         linear_solver: linear solver
             Linear solver
-        backup_solver: object
-            wntr.sim.solvers.NewtonSolver or Scipy solver
         solver_options: dict
             Solver options are specified using the following dictionary keys:
-        backup_solver_options: dict
-            Solver options are specified using the following dictionary keys:
-
             * MAXITER: the maximum number of iterations for each hydraulic solve
                 (each timestep and trial) (default = 3000)
             * TOL: tolerance for the hydraulic equations (default = 1e-6)
@@ -68,7 +63,6 @@ class FullQuboPolynomialSimulator(WNTRSimulator):
             * BACKTRACKING: whether or not to use a line search (default = True)
             * BT_START_ITER: the newton iteration at which a line search should start being used (default = 2)
             * THREADS: the number of threads to use in constraint and jacobian computations
-        backup_solver_options: dict
         convergence_error: bool (optional)
             If convergence_error is True, an error will be raised if the
             simulation does not converge. If convergence_error is False, partial results are returned,
@@ -79,7 +73,7 @@ class FullQuboPolynomialSimulator(WNTRSimulator):
         """
         logger.debug("creating hydraulic model")
         self.mode = self._wn.options.hydraulic.demand_model
-        self._model, self._model_updater = create_hydraulic_model(wn=self._wn)
+        self._model, self._model_updater = create_hydraulic_model_for_qubo(wn=self._wn)
 
         if diagnostics:
             diagnostics = _Diagnostics(self._wn, self._model, self.mode, enable=True)
