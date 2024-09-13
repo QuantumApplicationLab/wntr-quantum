@@ -17,7 +17,7 @@ from wntr.sim.aml import Model
 from wntr.sim.solvers import SolverStatus
 from ..models.chezy_manning import get_chezy_manning_matrix
 from ..models.darcy_weisbach import get_darcy_weisbach_matrix
-from ..models.mass_balance import get_mass_balance_matrix
+from ..models.mass_balance import get_mass_balance_qubops_matrix
 
 
 class QuboPolynomialSolver(object):
@@ -190,7 +190,7 @@ class QuboPolynomialSolver(object):
         matrices = (P0, P1, P2)
 
         # get the mass balance
-        matrices = get_mass_balance_matrix(
+        matrices = get_mass_balance_qubops_matrix(
             model, self.wn, matrices, convert_to_us_unit=True
         )
 

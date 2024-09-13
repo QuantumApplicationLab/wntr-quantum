@@ -1,4 +1,5 @@
 import itertools
+from collections import OrderedDict
 from typing import List
 from typing import Tuple
 import numpy as np
@@ -108,9 +109,6 @@ class QUBODesignPipeDiameter(object):
         self.qubo = None
         self.flow_index_mapping = None
         self.head_index_mapping = None
-
-        # compute the polynomial matrices
-        self.matrices = self.initialize_matrices()
 
     def get_dw_pipe_coefficients(self, link):
         """Get the pipe coefficients for a specific link with DW.
@@ -517,6 +515,37 @@ class QUBODesignPipeDiameter(object):
             data[idx] = var.value
         return data
 
+    def create_index_mapping(self, model: Model) -> None:
+        """Creates the index maping for qubops matrices.
+
+        Args:
+            model (Model): the AML Model
+        """
+        # init the idx
+        idx = 0
+
+        # number of variables that are flows
+        num_flow_var = len(model.flow)
+
+        # get the indices for the sign/abs value of the flow
+        self.flow_index_mapping = OrderedDict()
+        for _, val in model.flow.items():
+            if val.name not in self.flow_index_mapping:
+                self.flow_index_mapping[val.name] = {
+                    "sign": None,
+                    "absolute_value": None,
+                }
+            self.flow_index_mapping[val.name]["sign"] = idx
+            self.flow_index_mapping[val.name]["absolute_value"] = idx + num_flow_var
+            idx += 1
+
+        # get the indices for the heads
+        idx = 0
+        self.head_index_mapping = OrderedDict()
+        for _, val in model.head.items():
+            self.head_index_mapping[val.name] = 2 * num_flow_var + idx
+            idx += 1
+
     def solve(  # noqa: D417
         self, strength: float = 1e6, num_reads: int = 10000, **options
     ) -> Tuple:
@@ -529,6 +558,12 @@ class QUBODesignPipeDiameter(object):
         Returns:
             Tuple: Succes message
         """
+        # create the index mapping of the variables
+        self.create_index_mapping()
+
+        # compute the polynomial matrices
+        self.matrices = self.initialize_matrices()
+
         self.qubo = QUBOPS_MIXED(self.mixed_solution_vector, **options)
         matrices = tuple(sparse.COO(m) for m in self.matrices)
 
@@ -536,7 +571,12 @@ class QUBODesignPipeDiameter(object):
         self.bqm = self.qubo.create_bqm(matrices, strength=strength)
 
         # add constraints on the hot encoding
-        istart = self.sol_vect_flows.size + self.sol_vect_heads.size
+        # the sum of each hot encoding variable of a given pipe must equals 1
+        istart = (
+            self.sol_vect_signs.size
+            + self.sol_vect_flows.size
+            + self.sol_vect_heads.size
+        )
         for i in range(self.sol_vect_flows.size):
 
             # create the expression [(x0, 1), (x1, 1), ...]
