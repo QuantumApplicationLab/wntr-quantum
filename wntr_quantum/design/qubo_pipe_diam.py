@@ -362,18 +362,43 @@ class QUBODesignPipeDiameter(object):
             p2 = (parameters * p2).sum(-1)
 
         elif self.wn.options.hydraulic.headloss == "D-W":
-            raise NotImplementedError()
-            p0 = P0[:num_vars].reshape(
-                -1,
+
+            # P0 matrix
+            p0 = P0[:-1]
+            # add the k0 term without sgin  to p0
+            p0 += (
+                (parameters * P2[:-1, :num_signs, num_vars:])
+                .sum(-1)
+                .sum(-1)
+                .reshape(-1, 1)
             )
-            p0 += (parameters * P1[:num_vars, num_vars:]).sum(-1)
 
-            p1 = P1[:num_vars, :num_vars]
-            p1 += (parameters * P2[:num_vars, :num_vars, num_vars:]).sum(-1)
+            # P1 matrix
+            p1 = P1[:-1, num_pipes:num_vars] + P2.sum(1)[:-1, num_pipes:num_vars]
 
-            params = np.array([0] * num_vars + parameters)
-            p2 = (params * P3).sum(-1)[:, :num_vars, :num_vars].sum(-1)[:num_vars]
-            # print(p0, p1, p2)
+            # add the terms in k1
+            p1 += (
+                (parameters * P3[:-1, :num_signs, num_signs:num_vars, num_vars:])
+                .sum(1)
+                .sum(-1)
+            )
+
+            # P2 matrix
+            p2 = (
+                (
+                    parameters
+                    * P4[
+                        :-1,
+                        :num_signs,
+                        num_signs:num_vars,
+                        num_signs:num_vars,
+                        num_vars:,
+                    ]
+                )
+                .sum(1)
+                .sum(-1)
+                .sum(-1)
+            )
 
         def func(input):
             input = input.reshape(-1, 1)
@@ -397,7 +422,7 @@ class QUBODesignPipeDiameter(object):
         P0, P1, P2, P3, P4 = matrices
 
         # loop over all the pipe coeffs
-        istart = self.sol_vect_flows.size + self.sol_vect_heads.size
+        istart = 2 * self.sol_vect_flows.size + self.sol_vect_heads.size
         index_over = self.wn.pipe_name_list
 
         # loop over all the pipe coeffs
@@ -631,7 +656,7 @@ class QUBODesignPipeDiameter(object):
             istart += self.num_diameters
 
         # add constraint on head pressures
-        istart = self.sol_vect_flows.size
+        istart = 2 * self.sol_vect_flows.size
         for i in range(self.sol_vect_heads.size):
 
             self.bqm.add_linear_inequality_constraint(

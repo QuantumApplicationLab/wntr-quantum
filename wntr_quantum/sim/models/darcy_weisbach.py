@@ -294,7 +294,8 @@ def get_pipe_design_darcy_wesibach_qubops_matrix(
             m.pipe_coefficients[link_name].value,
             m.pipe_coefficients_indices[link_name].value,
         ):
-            P1[ieq, pipe_idx + num_continuous_var] -= pipe_coefs[0]
+            # P1[ieq, pipe_idx + num_continuous_var] -= pipe_coefs[0]
+            P2[ieq, sign_index, pipe_idx + num_continuous_var] -= pipe_coefs[0]
             P3[
                 ieq, sign_index, flow_index, pipe_idx + num_continuous_var
             ] -= pipe_coefs[1]
