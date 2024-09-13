@@ -515,21 +515,18 @@ class QUBODesignPipeDiameter(object):
             data[idx] = var.value
         return data
 
-    def create_index_mapping(self, model: Model) -> None:
-        """Creates the index maping for qubops matrices.
-
-        Args:
-            model (Model): the AML Model
-        """
+    def create_index_mapping(self) -> None:
+        """Creates the index maping for qubops matrices."""
         # init the idx
         idx = 0
 
         # number of variables that are flows
-        num_flow_var = len(model.flow)
+        num_flow_var = len(self.model.flow)
+        num_head_var = len(self.model.head)
 
         # get the indices for the sign/abs value of the flow
         self.flow_index_mapping = OrderedDict()
-        for _, val in model.flow.items():
+        for _, val in self.model.flow.items():
             if val.name not in self.flow_index_mapping:
                 self.flow_index_mapping[val.name] = {
                     "sign": None,
@@ -542,9 +539,21 @@ class QUBODesignPipeDiameter(object):
         # get the indices for the heads
         idx = 0
         self.head_index_mapping = OrderedDict()
-        for _, val in model.head.items():
+        for _, val in self.model.head.items():
             self.head_index_mapping[val.name] = 2 * num_flow_var + idx
             idx += 1
+
+        # get the indices for the pipe diameters
+        idx = 0
+        self.pipe_diameter_index_mapping = OrderedDict()
+        for _, val in self.model.flow.items():
+            if val.name not in self.pipe_diameter_index_mapping:
+                self.pipe_diameter_index_mapping[val.name] = OrderedDict()
+                for idiam in range(self.num_diameters):
+                    self.pipe_diameter_index_mapping[val.name][idiam] = (
+                        2 * num_flow_var + num_head_var + idx
+                    )
+                    idx += 1
 
     def solve(  # noqa: D417
         self, strength: float = 1e6, num_reads: int = 10000, **options
