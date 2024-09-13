@@ -229,7 +229,7 @@ def get_darcy_weisbach_qubops_matrix(
         sign_index = flow_index_mapping[m.flow[link_name].name]["sign"]
         flow_index = flow_index_mapping[m.flow[link_name].name]["absolute_value"]
 
-        P0[ieq] -= k0.value
+        P1[ieq, sign_index] -= k0.value
         P2[ieq, sign_index, flow_index] -= k1.value
         P3[ieq, sign_index, flow_index, flow_index] -= k2.value
 

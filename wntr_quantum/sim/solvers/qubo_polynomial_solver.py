@@ -97,11 +97,15 @@ class QuboPolynomialSolver(object):
         """
         P0, P1, P2, P3 = self.matrices
         num_pipes = self.wn.num_pipes
-        p0 = P0.reshape(
-            -1,
-        )
-        p1 = P1[:, num_pipes:] + P2.sum(1)[:, num_pipes:]
-        p2 = P3.sum(1)[:, num_pipes:, num_pipes:].sum(-1)
+
+        if self.wn.options.hydraulic.headloss == "C-M":
+            p0 = P0.reshape(
+                -1,
+            )
+            p1 = P1[:, num_pipes:] + P2.sum(1)[:, num_pipes:]
+            p2 = P3.sum(1)[:, num_pipes:, num_pipes:].sum(-1)
+        elif self.wn.options.hydraulic.headloss == "D-W":
+            raise NotImplementedError("verufy_solution not implemented for DW")
         sign = np.sign(input)
         return p0 + p1 @ input + (p2 @ (sign * input * input))
 
@@ -120,6 +124,7 @@ class QuboPolynomialSolver(object):
         P0, P1, P2, P3 = self.matrices
         num_heads = self.wn.num_junctions
         num_pipes = self.wn.num_pipes
+        num_signs = self.wn.num_pipes
         num_vars = num_heads + num_pipes
 
         if self.wn.options.hydraulic.headloss == "C-M":
@@ -130,7 +135,13 @@ class QuboPolynomialSolver(object):
             p2 = P3.sum(1)[:, num_pipes:, num_pipes:].sum(-1)
 
         elif self.wn.options.hydraulic.headloss == "D-W":
-            raise NotImplementedError()
+            p0 = P0.reshape(
+                -1,
+            ) + P1[
+                :, :num_signs
+            ].sum(-1)
+            p1 = P1[:, num_pipes:] + P2.sum(1)[:, num_pipes:]
+            p2 = P3.sum(1)[:, num_pipes:, num_pipes:].sum(-1)
 
         def func(input):
             sign = np.sign(input)
