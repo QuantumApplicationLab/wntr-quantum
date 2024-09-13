@@ -1,5 +1,4 @@
 from collections import OrderedDict
-from typing import Dict
 from typing import List
 from typing import Tuple
 import matplotlib.pyplot as plt
