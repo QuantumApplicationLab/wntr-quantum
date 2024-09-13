@@ -1,9 +1,8 @@
 import os
 import matplotlib.pyplot as plt
-import numpy as np
 import wntr
-from quantum_newton_raphson.qubo_solver import QUBO_SOLVER
-from qubols.encodings import RangedEfficientEncoding
+from dwave.samplers import SteepestDescentSolver
+from qubops.encodings import PositiveQbitEncoding
 import wntr_quantum
 
 
@@ -60,7 +59,8 @@ os.environ["EPANET_QUANTUM"] = "/Users/murilo/Documents/NLeSC_Projects/Vitens/EP
 
 # set input files
 path = "../docs/notebooks/networks"
-inputs = ["Net1Loops.inp", "Net2Loops.inp", "Net3Loops.inp"]
+inputs = ["Net0.inp"]
+
 
 for file in inputs:
 
@@ -77,38 +77,24 @@ for file in inputs:
     sim_classical = wntr_quantum.sim.QuantumEpanetSimulator(wn)
     results_classical = sim_classical.run_sim()
 
-    # load EPANET A and b matrices from temp
-    epanet_A, epanet_b = wntr_quantum.sim.epanet.load_epanet_matrix()
-
-    # check the size of the A and b matrices
-    epanet_A_dim = epanet_A.todense().shape[0]
-    epanet_b_dim = epanet_b.shape[0]
-    print(f"* Size of the Jacobian in EPANET simulator: {epanet_A_dim}")
-    print(f"* Size of the b vector in EPANET simulator: {epanet_b_dim}")
-
-    # save number of nodes and pipes
-    n_nodes = len(results_classical.node["pressure"].iloc[0])
-    n_pipes = len(results_classical.link["flowrate"].iloc[0])
-
-    # set number of qubits
-    n_qubits = int(np.ceil(np.log2(epanet_A_dim)))
-
-    # set the qubo solver
-    qubo_solver = QUBO_SOLVER(
-        encoding=RangedEfficientEncoding,
-        num_qbits=15,
-        num_reads=100,
-        range=200,
-        offset=600,
-        iterations=5,
-        temperature=1e4,
-        use_aequbols=True,
+    nqbit = 9
+    step = 0.5 / (2**nqbit - 1)
+    flow_encoding = PositiveQbitEncoding(
+        nqbit=nqbit, step=step, offset=+1.5, var_base_name="x"
     )
 
-    print("* Solving model with EPANET Quantum ...\n")
-    # solve model using EPANET quantum and QUBOs
-    sim_quantum = wntr_quantum.sim.QuantumEpanetSimulator(wn, linear_solver=qubo_solver)
-    results_quantum = sim_quantum.run_sim(linear_solver=qubo_solver)
+    nqbit = 9
+    step = 50 / (2**nqbit - 1)
+    head_encoding = PositiveQbitEncoding(
+        nqbit=nqbit, step=step, offset=+50.0, var_base_name="x"
+    )
+
+    # solve model using FULL QUBOs
+    sim = wntr_quantum.sim.FullQuboPolynomialSimulator(
+        wn, flow_encoding=flow_encoding, head_encoding=head_encoding
+    )
+    sampler = SteepestDescentSolver()
+    results_quantum = sim.run_sim(solver_options={"sampler": sampler})
 
     # plot networt and absolute percent errors
     wntr.graphics.plot_network(
@@ -135,15 +121,15 @@ for file in inputs:
     # plot all data
     plt.close()
     plt.scatter(
-        classical_data[:n_pipes],
-        quantum_data[:n_pipes],
+        classical_data[:2],
+        quantum_data[:2],
         label="Flowrates",
         color="blue",
         marker="o",
     )
     plt.scatter(
-        classical_data[n_pipes:],
-        quantum_data[n_pipes:],
+        classical_data[2:],
+        quantum_data[2:],
         label="Pressures",
         color="red",
         marker="s",
