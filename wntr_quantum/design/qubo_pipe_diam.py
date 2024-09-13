@@ -362,6 +362,7 @@ class QUBODesignPipeDiameter(object):
             p2 = (parameters * p2).sum(-1)
 
         elif self.wn.options.hydraulic.headloss == "D-W":
+            raise NotImplementedError()
             p0 = P0[:num_vars].reshape(
                 -1,
             )

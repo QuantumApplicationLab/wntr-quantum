@@ -122,11 +122,15 @@ class QuboPolynomialSolver(object):
         num_pipes = self.wn.num_pipes
         num_vars = num_heads + num_pipes
 
-        p0 = P0.reshape(
-            -1,
-        )
-        p1 = P1[:, num_pipes:] + P2.sum(1)[:, num_pipes:]
-        p2 = P3.sum(1)[:, num_pipes:, num_pipes:].sum(-1)
+        if self.wn.options.hydraulic.headloss == "C-M":
+            p0 = P0.reshape(
+                -1,
+            )
+            p1 = P1[:, num_pipes:] + P2.sum(1)[:, num_pipes:]
+            p2 = P3.sum(1)[:, num_pipes:, num_pipes:].sum(-1)
+
+        elif self.wn.options.hydraulic.headloss == "D-W":
+            raise NotImplementedError()
 
         def func(input):
             sign = np.sign(input)
