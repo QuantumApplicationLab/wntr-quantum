@@ -18,12 +18,12 @@ from wntr.network import WaterNetworkModel
 from wntr.sim import aml
 from wntr.sim.aml import Model
 from wntr.sim.solvers import SolverStatus
-from ..sim.hydraulics import create_hydraulic_model
 from ..sim.models.chezy_manning import cm_resistance_value
 from ..sim.models.chezy_manning import get_pipe_design_chezy_manning_qubops_matrix
 from ..sim.models.darcy_weisbach import dw_resistance_value
 from ..sim.models.darcy_weisbach import get_pipe_design_darcy_wesibach_qubops_matrix
 from ..sim.models.mass_balance import get_mass_balance_qubops_matrix
+from ..sim.qubo_hydraulics import create_hydraulic_model_for_qubo
 
 
 class QUBODesignPipeDiameter(object):
@@ -93,7 +93,7 @@ class QUBODesignPipeDiameter(object):
         )
 
         # basic hydraulic model
-        self.model, self.model_updater = create_hydraulic_model(wn)
+        self.model, self.model_updater = create_hydraulic_model_for_qubo(wn)
 
         # valies of the pipe diameters/coefficients
         self.get_pipe_data()
@@ -264,24 +264,26 @@ class QUBODesignPipeDiameter(object):
         """Computes the rhs vector associate with the input.
 
         Args:
-            input (np.ndarray): proposed solution
-            params (np.ndarray): parameters of the model
+            input (np.ndarray): proposed solution vector
+            params (list): one-hot encoding vector to select the resistance factor.
 
         Returns:
             np.ndarray: RHS vector
         """
-        P0, P1, P2, P3 = self.matrices
+        P0, P1, P2, P3, P4 = self.matrices
         num_heads = self.wn.num_junctions
+        num_signs = self.wn.num_pipes
         num_pipes = self.wn.num_pipes
-        num_vars = num_heads + num_pipes
+        num_vars = num_heads + 2 * num_pipes
 
-        p0 = P0[:num_vars].reshape(
-            -1,
-        )
-        p1 = P1[:num_vars, :num_vars]
-        p3 = P3[:num_vars].sum(-1)[:, :num_vars, :num_vars].sum(-1)
-        parameters = np.array([0] * num_heads + params)
-        return p0 + p1 @ input + parameters * (p3 @ (input * input))
+        input = input.reshape(-1, 1)
+        p0 = P0[:-1].reshape(-1, 1)
+        p1 = P1[:-1, num_signs:num_vars] + P2.sum(1)[:-1, num_signs:num_vars]
+        p2 = P4.sum(1)[:-1, num_pipes:num_vars, num_pipes:num_vars].sum(-2)
+        parameters = np.array([0] * num_vars + params)
+        p2 = (parameters * p2).sum(-1)
+        sign = np.sign(input)
+        return p0 + p1 @ input + (p2 @ (sign * input * input))
 
     def enumerates_classical_solutions(self, convert_to_si=True):
         """Generates the classical solution."""
@@ -318,6 +320,24 @@ class QUBODesignPipeDiameter(object):
             new_sol[ih] = to_si(FlowUnits.CFS, solution[ih], HydParam.Length)
         return new_sol
 
+    def convert_solution_from_si(self, solution: np.ndarray) -> np.ndarray:
+        """Converts the solution to SI.
+
+        Args:
+            solution (array): solution vectors in SI
+
+        Returns:
+            Tuple: solution in US units
+        """
+        num_heads = self.wn.num_junctions
+        num_pipes = self.wn.num_pipes
+        new_sol = np.zeros_like(solution)
+        for ip in range(num_pipes):
+            new_sol[ip] = from_si(FlowUnits.CFS, solution[ip], HydParam.Flow)
+        for ih in range(num_pipes, num_pipes + num_heads):
+            new_sol[ih] = from_si(FlowUnits.CFS, solution[ih], HydParam.Length)
+        return new_sol
+
     def compute_classical_solution(self, parameters, convert_to_si=True):
         """Computes the classical solution for a values of the hot encoding parameters.
 
@@ -328,18 +348,18 @@ class QUBODesignPipeDiameter(object):
         Returns:
             np.mdarray : solution
         """
-        P0, P1, P2, P3 = self.matrices
+        P0, P1, P2, P3, P4 = self.matrices
         num_heads = self.wn.num_junctions
+        num_signs = self.wn.num_pipes
         num_pipes = self.wn.num_pipes
-        num_vars = num_heads + num_pipes
+        num_vars = num_heads + 2 * num_pipes
 
         if self.wn.options.hydraulic.headloss == "C-M":
-            p0 = P0[:num_vars].reshape(
-                -1,
-            )
-            p1 = P1[:num_vars, :num_vars]
-            params = np.array([0] * num_vars + parameters)
-            p2 = (params * P3).sum(-1)[:, :num_vars, :num_vars].sum(-1)[:num_vars]
+            p0 = P0[:-1].reshape(-1, 1)
+            p1 = P1[:-1, num_signs:num_vars] + P2.sum(1)[:-1, num_signs:num_vars]
+            p2 = P4.sum(1)[:-1, num_pipes:num_vars, num_pipes:num_vars].sum(-2)
+            parameters = np.array([0] * num_vars + parameters)
+            p2 = (parameters * p2).sum(-1)
 
         elif self.wn.options.hydraulic.headloss == "D-W":
             p0 = P0[:num_vars].reshape(
@@ -355,9 +375,12 @@ class QUBODesignPipeDiameter(object):
             # print(p0, p1, p2)
 
         def func(input):
-            return p0 + p1 @ input + (p2 @ (input * input))
+            input = input.reshape(-1, 1)
+            sign = np.sign(input)
+            sol = p0 + p1 @ input + (p2 @ (sign * input * input))
+            return sol.reshape(-1)
 
-        initial_point = np.random.rand(num_vars)
+        initial_point = np.random.rand(num_pipes + num_heads)
         res = newton_raphson(func, initial_point)
         assert np.allclose(func(res.solution), 0)
         if convert_to_si:

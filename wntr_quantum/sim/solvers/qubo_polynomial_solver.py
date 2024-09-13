@@ -18,13 +18,8 @@ from wntr.epanet.util import to_si
 from wntr.network import WaterNetworkModel
 from wntr.sim.aml import Model
 from wntr.sim.solvers import SolverStatus
-<<<<<<< HEAD
-from ..models.chezy_manning import get_chezy_manning_matrix
-from ..models.darcy_weisbach import get_darcy_weisbach_matrix
-=======
 from ..models.chezy_manning import get_chezy_manning_qubops_matrix
 from ..models.darcy_weisbach import get_darcy_weisbach_qubops_matrix
->>>>>>> qubo_poly_solver
 from ..models.mass_balance import get_mass_balance_qubops_matrix
 
 
