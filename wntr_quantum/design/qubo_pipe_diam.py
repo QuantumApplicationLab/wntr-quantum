@@ -364,7 +364,7 @@ class QUBODesignPipeDiameter(object):
         elif self.wn.options.hydraulic.headloss == "D-W":
 
             # P0 matrix
-            p0 = P0[:-1]
+            p0 = np.copy(P0[:-1])
             # add the k0 term without sgin  to p0
             p0 += (
                 (parameters * P2[:-1, :num_signs, num_vars:])
