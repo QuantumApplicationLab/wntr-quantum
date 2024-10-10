@@ -6,6 +6,7 @@ import wntr
 from qiskit.circuit.library import RealAmplitudes
 from qiskit.primitives import Estimator
 from qiskit_algorithms.optimizers import CG
+from quantum_newton_raphson.hhl_solver import HHL_SOLVER
 from quantum_newton_raphson.qubo_solver import QUBO_SOLVER
 from quantum_newton_raphson.vqls_solver import VQLS_SOLVER
 import wntr_quantum
@@ -87,6 +88,15 @@ def run_QuantumEpanetSimulator_with_vqls():
     return sim.run_sim(linear_solver=linear_solver)
 
 
+def run_QuantumEpanetSimulator_with_hhl():
+    """Runs QuantumEpanetSimulator with HHL solver."""
+    wn = wntr.network.WaterNetworkModel(INP_FILE)
+    estimator = Estimator()
+    linear_solver = HHL_SOLVER(estimator=estimator)
+    sim = wntr_quantum.sim.QuantumEpanetSimulator(wn, linear_solver=linear_solver)
+    return sim.run_sim(linear_solver=linear_solver)
+
+
 @pytest.fixture(scope="module")
 def classical_EPANET_results():
     """Get the results from the classical NR solver."""
@@ -110,6 +120,12 @@ def test_QuantumEpanetSimulator_vqls_solver(classical_EPANET_results):
     """Checks that the Quantum EPANET VQLS solver works as expected."""
     vqls_quantum_results = run_QuantumEpanetSimulator_with_vqls()
     compare_results(classical_EPANET_results, vqls_quantum_results)
+
+
+def test_QuantumEpanetSimulator_hhl_solver(classical_EPANET_results):
+    """Checks that the Quantum EPANET HHL solver works as expected."""
+    hhl_quantum_results = run_QuantumEpanetSimulator_with_hhl()
+    compare_results(classical_EPANET_results, hhl_quantum_results)
 
 
 @pytest.fixture(scope="module")

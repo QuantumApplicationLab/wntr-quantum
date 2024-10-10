@@ -1,5 +1,5 @@
 [TITLE]
-shamir -- Bragalli, D'Ambrosio, Lee, Lodi, Toth (2008)
+modified network to reproduce https://doi.org/10.3390/w14060851
 
 [JUNCTIONS]
 ;ID              	Elev        	Demand      	Pattern         
@@ -20,13 +20,13 @@ shamir -- Bragalli, D'Ambrosio, Lee, Lodi, Toth (2008)
 [PIPES]
 ;ID              	Node1           	Node2           	Length      	Diameter    	Roughness   	MinorLoss   	Status
  1               	1               	2               	1000.00     	457.20      	130.00      	0.00        	Open  	; 
- 2               	2               	3               	1000.00     	203         	130.00      	0.00        	Open  	; 
- 3               	2               	4               	1000.00     	457         	130.00      	0.00        	Open  	; 
- 4               	4               	5               	1000.00     	153         	130.00      	0.00        	Open  	; 
+ 2               	2               	3               	1000.00     	254.0        	130.00      	0.00        	Open  	; 
+ 3               	2               	4               	1000.00     	406.4        	130.00      	0.00        	Open  	; 
+ 4               	4               	5               	1000.00     	101.6        	130.00      	0.00        	Open  	; 
  5               	4               	6               	1000.00     	406.40      	130.00      	0.00        	Open  	; 
  6               	6               	7               	1000.00     	254.00      	130.00      	0.00        	Open  	; 
- 7               	3               	5               	1000.00     	153         	130.00      	0.00        	Open  	; 
- 8               	5               	7               	1000.00     	153         	130.00      	0.00        	Open  	; 
+ 7               	3               	5               	1000.00     	254.0        	130.00      	0.00        	Open  	; 
+ 8               	5               	7               	1000.00     	 25.4        	130.00      	0.00        	Open  	; 
 
 [PUMPS]
 ;ID              	Node1           	Node2           	Parameters
