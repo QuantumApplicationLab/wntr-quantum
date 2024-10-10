@@ -668,14 +668,15 @@ class QUBODesignPipeDiameter(object):
             )
 
         # sample
-        sampleset = self.qubo.sample_bqm(self.bqm, num_reads=num_reads)
+        self.sampleset = self.qubo.sample_bqm(self.bqm, num_reads=num_reads)
 
         # decode
-        sol = self.qubo.decode_solution(sampleset.lowest().record[0][0])
+        sol = self.qubo.decode_solution(self.sampleset.lowest().record[0][0])
 
         # flatten
         sol, hot_encoding = self.flatten_solution_vector(sol)
         print(sol)
+
         # convert back to SI
         sol = self.convert_solution_to_si(sol)
 
