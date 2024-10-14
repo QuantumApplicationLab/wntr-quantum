@@ -5,6 +5,10 @@ from typing import Tuple
 import matplotlib.pyplot as plt
 import numpy as np
 import sparse
+from dimod import SampleSet
+from dimod import Vartype
+from dimod import Sampler
+from dwave.samplers import SimulatedAnnealingSampler
 from quantum_newton_raphson.newton_raphson import newton_raphson
 from qubops.encodings import BaseQbitEncoding
 from qubops.encodings import PositiveQbitEncoding
@@ -151,10 +155,27 @@ class QuboPolynomialSolver(object):
         res = newton_raphson(func, initial_point, max_iter=max_iter, tol=tol)
         sol = res.solution
         converged = np.allclose(func(sol), 0)
+
+        # get the closest encoded solution
+        encoded_sol = np.zeros_like(sol)
+        for idx, s in enumerate(sol):
+            val, _ = self.mixed_solution_vector.encoded_reals[
+                idx + num_pipes
+            ].find_closest(np.abs(s))
+            encoded_sol[idx] = np.sign(s) * val
+
         # convert back to SI
         sol = self.convert_solution_to_si(sol)
+        encoded_sol = self.convert_solution_to_si(encoded_sol)
 
-        return (sol, converged)
+        # remove the height of the junctions
+        for i in range(self.wn.num_junctions):
+            sol[num_pipes + i] -= self.wn.nodes[self.wn.junction_name_list[i]].elevation
+            encoded_sol[num_pipes + i] -= self.wn.nodes[
+                self.wn.junction_name_list[i]
+            ].elevation
+
+        return (sol, encoded_sol, converged)
 
     @staticmethod
     def plot_solution_vs_reference(
@@ -415,7 +436,14 @@ class QuboPolynomialSolver(object):
             idx += 1
 
     def solve(  # noqa: D417
-        self, model: Model, strength: float = 1e6, num_reads: int = 10000, **options
+        self,
+        model: Model,
+        strength: float = 1e6,
+        sampler: Sampler = SimulatedAnnealingSampler(),
+        **sampler_options,
+        # num_reads: int = 10000,
+        # num_sweeps: int = 10000,
+        # **options,
     ) -> Tuple:
         """Solves the Hydraulics equations.
 
@@ -434,7 +462,12 @@ class QuboPolynomialSolver(object):
         self.matrices = self.initialize_matrices(model)
 
         # solve using qubo poly
-        sol = self.qubo_poly_solve(strength=strength, num_reads=num_reads, **options)
+        sol = self.qubo_poly_solve(
+            strength=strength,
+            sampler=sampler,
+            **sampler_options,
+            # strength=strength, num_sweeps=num_sweeps, num_reads=num_reads, **options
+        )
 
         # load data in the AML model
         model.set_structure()
@@ -447,24 +480,33 @@ class QuboPolynomialSolver(object):
             0,
         )
 
-    def qubo_poly_solve(self, strength=1e6, num_reads=10000, **options):  # noqa: D417
+    def qubo_poly_solve(
+        self,
+        strength=1e6,
+        sampler=SimulatedAnnealingSampler(),
+        **sampler_options,
+        # num_reads=10000, num_sweeps=1000, **options
+    ):  # noqa: D417
         """Solves the Hydraulics equations.
 
         Args:
             strength (float, optional): substitution strength. Defaults to 1e6.
             num_reads (int, optional): number of reads for the sampler. Defaults to 10000.
+            num_sweeps (int, optinal): number of sweeps. Default 1000
 
         Returns:
             np.ndarray: solution of the problem
         """
-        self.qubo = QUBOPS_MIXED(self.mixed_solution_vector, **options)
+        self.qubo = QUBOPS_MIXED(self.mixed_solution_vector, {"sampler": sampler})
         matrices = tuple(sparse.COO(m) for m in self.matrices)
 
         # creates BQM
         self.qubo.qubo_dict = self.qubo.create_bqm(matrices, strength=strength)
 
         # sample
-        self.sampleset = self.qubo.sample_bqm(self.qubo.qubo_dict, num_reads=num_reads)
+        self.sampleset = self.qubo.sample_bqm(
+            self.qubo.qubo_dict, **sampler_options
+        )  # num_reads=num_reads, num_sweeps=num_sweeps)
 
         # decode
         sol = self.qubo.decode_solution(self.sampleset.lowest().record[0][0])
@@ -475,4 +517,61 @@ class QuboPolynomialSolver(object):
         # convert back to SI
         sol = self.convert_solution_to_si(sol)
 
+        # remove the height of the junction
+        for i in range(self.wn.num_junctions):
+            sol[self.wn.num_pipes + i] -= self.wn.nodes[
+                self.wn.junction_name_list[i]
+            ].elevation
+
         return sol
+
+    def analyze_sampleset(self):
+        """Ananlyze the results contained in the sampleset."""
+
+        # run through all samples
+        solutions, energy, quadra_status = [], [], []
+        for x in self.sampleset.data():
+
+            # create a sample
+            y = SampleSet.from_samples(x.sample, Vartype.BINARY, x.energy)
+            var = y.variables
+            data = np.array(y.record[0][0])
+
+            # see if it respects quadratic condition
+            status = "True"
+            for v, d in zip(var, data):
+                if v not in self.qubo.mapped_variables:
+                    var_tmp = v.split("*")
+                    itmp = 0
+                    for vtmp in var_tmp:
+                        idx = self.qubo.index_variables[
+                            self.qubo.mapped_variables.index(vtmp)
+                        ]
+                        if itmp == 0:
+                            dcomposite = data[idx]
+                            itmp = 1
+                        else:
+                            dcomposite *= data[idx]
+                    if d != dcomposite:
+                        status = False
+                        break
+            quadra_status.append(status)
+
+            # solution
+            sol = self.qubo.decode_solution(data)
+
+            # combine the sign*abs values for the flow
+            sol = self.combine_flow_values(sol)
+
+            # convert back to SI
+            sol = self.convert_solution_to_si(sol)
+
+            # remove the height of the junction
+            for i in range(self.wn.num_junctions):
+                sol[self.wn.num_pipes + i] -= self.wn.nodes[
+                    self.wn.junction_name_list[i]
+                ].elevation
+
+            solutions.append(sol)
+            energy.append(x.energy)
+        return solutions, energy, quadra_status
