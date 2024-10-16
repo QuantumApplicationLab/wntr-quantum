@@ -15,6 +15,10 @@ def generate_random_valid_sample(qubo):
     for iv, v in enumerate(sorted(qubo.qubo_dict.variables)):
         sample[v] = np.random.randint(2)
 
+    for v in qubo.mapped_variables[:7]:
+        sample[v] = 1
+    sample[qubo.mapped_variables[7]] = 0
+
     for v, _ in sample.items():
         if v not in qubo.mapped_variables:
             var_tmp = v.split("*")
@@ -127,7 +131,8 @@ class ProposalStep:  # noqa: D101
         Returns:
             _type_: _description_
         """
-        vidx = np.random.choice(self.single_var_index)
+        nmax = 8 + 8 * 5
+        vidx = np.random.choice(self.single_var_index[nmax:])
         x[vidx] = int(not (x[vidx]))
         self.fix_constraint(x, vidx)
         return x

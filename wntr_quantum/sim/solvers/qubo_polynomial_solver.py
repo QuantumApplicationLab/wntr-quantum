@@ -109,7 +109,7 @@ class QuboPolynomialSolver(object):
             p1 = P1[:, num_pipes:] + P2.sum(1)[:, num_pipes:]
             p2 = P3.sum(1)[:, num_pipes:, num_pipes:].sum(-1)
         elif self.wn.options.hydraulic.headloss == "D-W":
-            raise NotImplementedError("verufy_solution not implemented for DW")
+            raise NotImplementedError("verify_solution not implemented for DW")
         sign = np.sign(input)
         return p0 + p1 @ input + (p2 @ (sign * input * input))
 
