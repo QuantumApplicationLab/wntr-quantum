@@ -156,12 +156,17 @@ class QuboPolynomialSolver(object):
         sol = res.solution
         converged = np.allclose(func(sol), 0)
 
-        # get the closest encoded solution
+        # get the closest encoded solution and binary encoding
+        bin_rep_sol = []
+        for i in range(num_pipes):
+            bin_rep_sol.append(int(sol[i] > 0))
+
         encoded_sol = np.zeros_like(sol)
         for idx, s in enumerate(sol):
-            val, _ = self.mixed_solution_vector.encoded_reals[
+            val, bin_rpr = self.mixed_solution_vector.encoded_reals[
                 idx + num_pipes
             ].find_closest(np.abs(s))
+            bin_rep_sol.append(bin_rpr)
             encoded_sol[idx] = np.sign(s) * val
 
         # convert back to SI
@@ -175,7 +180,7 @@ class QuboPolynomialSolver(object):
                 self.wn.junction_name_list[i]
             ].elevation
 
-        return (sol, encoded_sol, converged)
+        return (sol, encoded_sol, bin_rep_sol, converged)
 
     @staticmethod
     def plot_solution_vs_reference(
@@ -441,9 +446,6 @@ class QuboPolynomialSolver(object):
         strength: float = 1e6,
         sampler: Sampler = SimulatedAnnealingSampler(),
         **sampler_options,
-        # num_reads: int = 10000,
-        # num_sweeps: int = 10000,
-        # **options,
     ) -> Tuple:
         """Solves the Hydraulics equations.
 
@@ -463,10 +465,7 @@ class QuboPolynomialSolver(object):
 
         # solve using qubo poly
         sol = self.qubo_poly_solve(
-            strength=strength,
-            sampler=sampler,
-            **sampler_options,
-            # strength=strength, num_sweeps=num_sweeps, num_reads=num_reads, **options
+            strength=strength, sampler=sampler, **sampler_options
         )
 
         # load data in the AML model
@@ -485,14 +484,13 @@ class QuboPolynomialSolver(object):
         strength=1e6,
         sampler=SimulatedAnnealingSampler(),
         **sampler_options,
-        # num_reads=10000, num_sweeps=1000, **options
     ):  # noqa: D417
         """Solves the Hydraulics equations.
 
         Args:
             strength (float, optional): substitution strength. Defaults to 1e6.
-            num_reads (int, optional): number of reads for the sampler. Defaults to 10000.
-            num_sweeps (int, optinal): number of sweeps. Default 1000
+            sampler (float, dwave.sampler):  sampler to optimize the qubo
+            **sampler_options (dict): options for the sampler
 
         Returns:
             np.ndarray: solution of the problem
