@@ -40,6 +40,7 @@ class SimulatedAnnealingResults:
 
     res: list
     energies: list
+    trajectory: list
 
 
 class SimulatedAnnealing:  # noqa: D101
@@ -55,6 +56,7 @@ class SimulatedAnnealing:  # noqa: D101
         Tschedule=None,
         x0=None,
         take_step=None,
+        save_traj=False,
     ):
         """Sample the problem.
 
@@ -65,6 +67,7 @@ class SimulatedAnnealing:  # noqa: D101
             Tschedule (list, optional): The temperature schedule
             x0 (_type_, optional): _description_. Defaults to None.
             take_step (_type_, optional): _description_. Defaults to None.
+            save_traj (bool, optional): save the trajectory. Defaults to False
         """
 
         def bqm_energy(x, var_names):
@@ -97,6 +100,12 @@ class SimulatedAnnealing:  # noqa: D101
         energies = []
         energies.append(bqm_energy(x, var_names))
 
+        # init the traj
+        trajectory = None
+        if save_traj:
+            trajectory = []
+            trajectory.append(x)
+
         # loop over the temp schedule
         for T in tqdm(Tschedule):
 
@@ -112,12 +121,16 @@ class SimulatedAnnealing:  # noqa: D101
             if e_new < e_ori:
                 x = x_new
                 energies.append(bqm_energy(x, var_names))
+                if save_traj:
+                    trajectory.append(x)
             else:
                 p = np.exp(-(e_new - e_ori) / T)
                 if np.random.rand() < p:
                     x = x_new
                     energies.append(bqm_energy(x, var_names))
+                    if save_traj:
+                        trajectory.append(x)
                 else:
                     x = x_ori
 
-        return SimulatedAnnealingResults(x, energies)
+        return SimulatedAnnealingResults(x, energies, trajectory)
