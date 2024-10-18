@@ -51,9 +51,8 @@ class SimulatedAnnealing:  # noqa: D101
     def sample(
         self,
         bqm,
-        num_sweeps=100,
-        Temp=[1e5, 1e-3],
-        Tschedule=None,
+        Tschedule,
+        num_traj=10,
         x0=None,
         take_step=None,
         save_traj=False,
@@ -62,10 +61,9 @@ class SimulatedAnnealing:  # noqa: D101
 
         Args:
             bqm (_type_): _description_
-            num_sweeps (int, optional): _description_. Defaults to 100.
-            Temp (list, optional): _description_. Defaults to [1e5, 1e-3].
-            Tschedule (list, optional): The temperature schedule
+            Tschedule (list): The temperature schedule
             x0 (_type_, optional): _description_. Defaults to None.
+            num_traj(int, optional): number of parallel traj. Default to None
             take_step (_type_, optional): _description_. Defaults to None.
             save_traj (bool, optional): save the trajectory. Defaults to False
         """
@@ -88,13 +86,9 @@ class SimulatedAnnealing:  # noqa: D101
 
         # define the initial state
         if x0 is None:
-            x = np.random.randint(2, size=bqm.num_variables)
+            x = np.random.randint(2, size=(num_traj, bqm.num_variables)).tolist()
         else:
             x = x0
-
-        # define the energy range
-        if Tschedule is None:
-            Tschedule = np.linspace(Temp[0], Temp[1], num_sweeps)
 
         # initialize the energy
         energies = []

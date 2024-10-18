@@ -22,7 +22,14 @@ class RandomStep(BaseStep):  # noqa: D101
 
 class IncrementalStep(BaseStep):
 
-    def __init__(self, var_names, single_var_names, single_var_index, step_size=1):
+    def __init__(
+        self,
+        var_names,
+        single_var_names,
+        single_var_index,
+        step_size=1,
+        optimize_values=None,
+    ):
         super().__init__(var_names, single_var_names, single_var_index)
 
         self.value_names = np.unique(
@@ -34,6 +41,9 @@ class IncrementalStep(BaseStep):
             self.index_values[val].append(idx)
 
         self.step_size = step_size
+        self.optimize_values = optimize_values
+        if self.optimize_values is None:
+            self.optimize_values = list(np.arange(len(self.value_names)))
 
     @staticmethod
     def _get_variable_root_name(var_name):
@@ -53,12 +63,10 @@ class IncrementalStep(BaseStep):
         Returns:
             _type_: _description_
         """
-        # extract the data of the variable we want to change
-        nmax = 16
-
-        random_val_name = np.random.choice(self.value_names[nmax:])
+        random_val_name = np.random.choice(self.value_names[self.optimize_values])
         idx = self.index_values[random_val_name]
         data = np.array(x)[idx]
+        width = len(data)
 
         # determine the max val
         max_val = np.ones_like(data)
@@ -80,12 +88,16 @@ class IncrementalStep(BaseStep):
             sign = 2 * np.random.randint(2) - 1
 
         # new value
-        new_val = val + sign * self.step_size
+        if self.step_size <= 1:
+            delta = 1
+        else:
+            delta = np.random.randint(self.step_size)
+        new_val = val + sign * delta
         if new_val < 0:
             new_val = 0
         if new_val > max_val:
             new_val = max_val
-        new_val = np.binary_repr(new_val)
+        new_val = np.binary_repr(new_val, width=width)
 
         # convert back to binary repr
         new_data = np.array([int(i) for i in new_val])[::-1]
@@ -99,3 +111,27 @@ class IncrementalStep(BaseStep):
             self.fix_constraint(x, vidx)
 
         return x
+
+
+class ParallelIncrementalStep(BaseStep):
+
+    def __init__(self, var_names, single_var_names, single_var_index, step_size=1):
+        super().__init__(var_names, single_var_names, single_var_index)
+        self.step_size = step_size
+        self._step = IncrementalStep(
+            var_names, single_var_names, single_var_index, step_size=step_size
+        )
+
+    def __call__(self, x):
+        """Call function of the method.
+
+        Args:
+            x (_type_): _description_
+
+        Returns:
+            _type_: _description_
+        """
+        new_x = []
+        for xi in x:
+            new_x.append(self._step(xi))
+        return new_x
