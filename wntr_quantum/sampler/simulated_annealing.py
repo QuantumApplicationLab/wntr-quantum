@@ -34,6 +34,62 @@ def generate_random_valid_sample(qubo):
     return sample
 
 
+def modify_solution_sample(net, solution, modify=["signs", "flows", "heads"]):
+    """_summary_
+
+    Args:
+        qubo (_type_): _description_
+        solution (_type_): _description_
+
+    Raises:
+        ValueError: _description_
+
+    Returns:
+        _type_: _description_
+    """
+
+    def flatten_list(lst):
+        out = []
+        for elmt in lst:
+            if not isinstance(elmt, list):
+                out += [elmt]
+            else:
+                out += elmt
+        return out
+
+    from copy import deepcopy
+
+    for m in modify:
+        if m not in ["signs", "flows", "heads"]:
+            raise ValueError("modify %s not recognized" % m)
+
+    mod_bin_rep_sol = deepcopy(solution)
+    num_pipes = net.wn.num_pipes
+    num_heads = net.wn.num_junctions
+
+    # modsify sign
+    if "signs" in modify:
+        for i in range(num_pipes):
+            mod_bin_rep_sol[i] = np.random.randint(2)
+
+    # modify flow value
+    if "flows" in modify:
+        for i in range(num_pipes, 2 * num_pipes):
+            mod_bin_rep_sol[i] = list(
+                np.random.randint(2, size=net.flow_encoding.nqbit)
+            )
+
+    # modify head values
+    if "heads" in modify:
+        for i in range(2 * num_pipes, 2 * num_pipes + num_heads):
+            mod_bin_rep_sol[i] = list(
+                np.random.randint(2, size=net.head_encoding.nqbit)
+            )
+
+    x = net.qubo.extend_binary_representation(flatten_list(mod_bin_rep_sol))
+    return x
+
+
 @dataclass
 class SimulatedAnnealingResults:
     """Result of the simulated anneling."""
@@ -47,6 +103,13 @@ class SimulatedAnnealing:  # noqa: D101
 
     def __init__(self):  # noqa: D107
         self.properties = {}
+
+    def optimize_value(self, variables=["sign", "flow", "pressure"]):
+        """_summary_.
+
+        Args:
+            variables (list, optional): _description_. Defaults to ['sign', 'flow', 'pressure'].
+        """
 
     def sample(
         self,

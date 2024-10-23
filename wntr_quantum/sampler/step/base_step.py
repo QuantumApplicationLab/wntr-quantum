@@ -2,7 +2,14 @@ import numpy as np
 
 
 class BaseStep:  # noqa: D101
-    def __init__(self, var_names, single_var_names, single_var_index):
+    def __init__(
+        self,
+        var_names,
+        single_var_names,
+        single_var_index,
+        step_size=1,
+        optimize_values=None,
+    ):
         """Propose a new solution vector.
 
         Args:
@@ -15,6 +22,28 @@ class BaseStep:  # noqa: D101
         self.single_var_index = single_var_index
         self.num_single_var = len(self.single_var_names)
         self.high_order_terms_mapping = self.define_mapping()
+
+        self.value_names = np.unique(
+            [self._get_variable_root_name(n) for n in single_var_names]
+        )
+        self.index_values = {v: [] for v in self.value_names}
+        for n, idx in zip(self.single_var_names, self.single_var_index):
+            val = self._get_variable_root_name(n)
+            self.index_values[val].append(idx)
+
+        self.step_size = step_size
+        self.optimize_values = optimize_values
+        if self.optimize_values is None:
+            self.optimize_values = list(np.arange(len(self.value_names)))
+
+    @staticmethod
+    def _get_variable_root_name(var_name):
+        """Extract the root name of the variables.
+
+        Args:
+            var_name (_type_): _description_
+        """
+        return "_".join(var_name.split("_")[:2])
 
     def define_mapping(self):
         """Define the mapping of the higher order terms.
