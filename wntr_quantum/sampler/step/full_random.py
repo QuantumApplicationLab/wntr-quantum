@@ -4,6 +4,18 @@ from .base_step import BaseStep
 
 class RandomStep(BaseStep):  # noqa: D101
 
+    def __init__(
+        self,
+        var_names,
+        single_var_names,
+        single_var_index,
+        optimize_values=None,
+    ):
+        super().__init__(var_names, single_var_names, single_var_index)
+        self.optimize_values = optimize_values
+        if self.optimize_values is None:
+            self.optimize_values = list(np.arange(len(self.value_names)))
+
     def __call__(self, x):
         """Call function of the method.
 

@@ -107,12 +107,12 @@ class SimulatedAnnealing:  # noqa: D101
             trajectory.append(x)
 
         # step scheduling
-        step_schedule = (
-            Tschedule / ((Tschedule[0] - Tschedule[-1]) / (take_step.step_size - 1)) + 1
-        )
+        # step_schedule = (
+        #     Tschedule / ((Tschedule[0] - Tschedule[-1]) / (take_step.step_size - 1)) + 1
+        # )
 
         # loop over the temp schedule
-        for s, T in tqdm(zip(step_schedule, Tschedule)):
+        for T in tqdm(Tschedule):
 
             # original point
             x_ori = deepcopy(x)
@@ -130,7 +130,10 @@ class SimulatedAnnealing:  # noqa: D101
                 if save_traj:
                     trajectory.append(x)
             else:
-                p = np.exp(-(e_new - e_ori) / T)
+                if T != 0:
+                    p = np.exp(-(e_new - e_ori) / T)
+                else:
+                    p = 0.0
                 if np.random.rand() < p:
                     x = x_new
                     energies.append(bqm_energy(x, var_names))

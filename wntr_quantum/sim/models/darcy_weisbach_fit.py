@@ -26,7 +26,9 @@ def friction_factor(q, e, s):  # noqa: D417
     return f
 
 
-def dw_fit(roughness, diameter, plot=False, convert_to_us_unit=False):
+def dw_fit(
+    roughness, diameter, plot=False, convert_to_us_unit=False, return_all_data=False
+):
     """Fit the dw friction coefficient to a quadratic polynomial.
 
     Args:
@@ -34,6 +36,7 @@ def dw_fit(roughness, diameter, plot=False, convert_to_us_unit=False):
         diameter (float): diamter of the pipe in meter
         plot(bool): plot the solution for visual inspection
         convert_to_us_unit(bool): convert to us unit
+        return_all_data (bool): return all data
     """
 
     def convert_to_USunit(roughness, diameter):
@@ -67,8 +70,10 @@ def dw_fit(roughness, diameter, plot=False, convert_to_us_unit=False):
         plt.show()
 
         print(res)
-    # return np.array(res), np.poly1d(res)(1 / Q), factors, Q
-    return np.array(res)
+    if return_all_data:
+        return np.array(res), np.poly1d(res)(1 / Q), factors, Q
+    else:
+        return np.array(res)
 
 
 def evaluate_fit(coeffs, flow):
