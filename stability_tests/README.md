@@ -6,5 +6,14 @@ This folder contains inputs for all stability tests done in connection with the 
 
 To download the folder containing the results of all runs and plot scripts, follow [this link](https://drive.google.com/file/d/1-ONsXO_WwINUDrOq-AYyQjnlX6SHRgA1/view?usp=sharing)
 
+## Plotting the results
 
+After downloading the zip file, you will find inside each folder, *e.g.*, `vqls`, `qubols`, and `hhl`, python scripts that can be used to generate plots of the stability results, namely, `correlation_flows_analysis_stability_tests.py` `correlation_pressure_analysis_stability_tests.py`
 
+Before running them, remember to activate your python or conda environments with `wntr` and `wntr-quantum` installed and them do:
+
+```bash
+python correlation_pressure_analysis_stability_tests.py
+```
+
+Apart from saving the plots in `*.png` format, the corresponding plots will also pop-up in your screen.

@@ -1,0 +1,15 @@
+slurmstepd: error: *** JOB 8183232 ON fcn41 CANCELLED AT 2024-10-21T09:12:40 DUE TO TIME LIMIT ***
+
+JOB STATISTICS
+==============
+Job ID: 8183232
+Cluster: snellius
+User/Group: crocha1/crocha1
+State: TIMEOUT (exit code 0)
+Nodes: 1
+Cores per node: 16
+CPU Utilized: 00:00:06
+CPU Efficiency: 0.00% of 80-00:06:08 core-walltime
+Job Wall-clock time: 5-00:00:23
+Memory Utilized: 12.96 GB
+Memory Efficiency: 10.80% of 120.00 GB
