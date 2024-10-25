@@ -38,8 +38,7 @@ class IncrementalStep(BaseStep):
         width = len(data)
 
         # determine the max val
-        max_val = np.ones_like(data)
-        max_val = int("".join([str(i) for i in max_val[::-1]]), base=2)
+        max_val = int("1" * width, base=2)
 
         # check if we reach min/max val
         max_val_check = data.prod() == 1
@@ -50,8 +49,10 @@ class IncrementalStep(BaseStep):
 
         # determine sign of the displacement
         if min_val_check:
+            # print("min val reached")
             sign = 1
         elif max_val_check:
+            # print("max val reached")
             sign = -1
         else:
             sign = 2 * np.random.randint(2) - 1
@@ -70,6 +71,7 @@ class IncrementalStep(BaseStep):
 
         # convert back to binary repr
         new_data = np.array([int(i) for i in new_val])[::-1]
+        print(random_val_name, data, "=>", new_data)
 
         # inject in the x vector
         for ix, nd in zip(idx, new_data):

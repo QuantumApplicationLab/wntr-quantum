@@ -104,22 +104,16 @@ class SimulatedAnnealing:  # noqa: D101
     def __init__(self):  # noqa: D107
         self.properties = {}
 
-    def optimize_value(self, variables=["sign", "flow", "pressure"]):
-        """_summary_.
-
-        Args:
-            variables (list, optional): _description_. Defaults to ['sign', 'flow', 'pressure'].
-        """
-
     def sample(
         self,
         bqm,
         num_sweeps=100,
         Temp=[1e5, 1e-3],
         Tschedule=None,
-        x0=None,
+        init_sample=None,
         take_step=None,
         save_traj=False,
+        verbose=False,
     ):
         """Sample the problem.
 
@@ -128,84 +122,89 @@ class SimulatedAnnealing:  # noqa: D101
             num_sweeps (int, optional): _description_. Defaults to 100.
             Temp (list, optional): _description_. Defaults to [1e5, 1e-3].
             Tschedule (list, optional): The temperature schedule
-            x0 (_type_, optional): _description_. Defaults to None.
+            init_sample (_type_, optional): _description_. Defaults to None.
             take_step (_type_, optional): _description_. Defaults to None.
             save_traj (bool, optional): save the trajectory. Defaults to False
+            verbose(bool, optional):
         """
 
-        def bqm_energy(x, var_names):
+        def bqm_energy(bqm, input, var_names):  # noqa: D417
             """Compute the energy of a given binary array.
 
             Args:
+                bqm (bqm)
                 x (_type_): _description_
                 var_names (list): list of var names
             """
-            return bqm.energies(as_samples((x, var_names)))
+            return bqm.energies(as_samples((input, var_names)))
+
+        self.bqm = bqm
 
         # check that take_step is callable
         if not callable(take_step):
             raise ValueError("take_step must be callable")
 
         # define th variable names
-        var_names = sorted(bqm.variables)
+        self.var_names = sorted(self.bqm.variables)
 
         # define the initial state
-        if x0 is None:
-            x = np.random.randint(2, size=bqm.num_variables)
+        if init_sample is None:
+            current_sample = np.random.randint(2, size=bqm.num_variables)
         else:
-            x = x0
+            current_sample = init_sample
 
         # define the energy range
         if Tschedule is None:
             Tschedule = np.linspace(Temp[0], Temp[1], num_sweeps)
 
+        # init the traj
+        trajectory = []
+        if save_traj:
+            trajectory.append(current_sample)
+
         # initialize the energy
         energies = []
-        energies.append(bqm_energy(x, var_names))
-
-        # init the traj
-        trajectory = None
-        if save_traj:
-            trajectory = []
-            trajectory.append(x)
-
-        # step scheduling
-        # step_schedule = (
-        #     Tschedule / ((Tschedule[0] - Tschedule[-1]) / (take_step.step_size - 1)) + 1
-        # )
+        e_current = bqm_energy(self.bqm, current_sample, self.var_names)
+        energies.append(e_current)
 
         # loop over the temp schedule
         for T in tqdm(Tschedule):
 
-            # original point
-            x_ori = deepcopy(x)
-            e_ori = bqm_energy(x, var_names)
-
             # new point
-            # take_step.step_size = int(s)
-            x_new = take_step(x)
-            e_new = bqm_energy(x, var_names)
+            new_sample = take_step(deepcopy(current_sample))
+            e_new = bqm_energy(self.bqm, new_sample, self.var_names)
 
             # accept/reject
-            if e_new < e_ori:
-                x = x_new
-                energies.append(bqm_energy(x, var_names))
-                if save_traj:
-                    trajectory.append(x)
-            else:
-                if T != 0:
-                    p = np.exp(-(e_new - e_ori) / T)
-                else:
-                    p = 0.0
-                if np.random.rand() < p:
-                    x = x_new
-                    energies.append(bqm_energy(x, var_names))
-                    if save_traj:
-                        trajectory.append(x)
-                else:
-                    x = x_ori
-                    energies.append(bqm_energy(x, var_names))
-                    if save_traj:
-                        trajectory.append(x)
+            if e_new < e_current:
+                if verbose:
+                    print("E :  %f =>  %f" % (e_current, e_new))
+                current_sample = deepcopy(new_sample)
+                e_current = e_new
 
-        return SimulatedAnnealingResults(x, energies, trajectory)
+            else:
+                if verbose:
+                    print("E :  %f =>  %f" % (e_current, e_new))
+
+                p = np.exp((e_current - e_new) / (T + 1e-12))
+                eps = np.random.rand()
+                # if verbose:
+                #     print(
+                #         "Temp: %f, eps: %f, p: %f, accepted %r" % (T, eps, p, eps < p)
+                #     )
+                if eps < p:
+                    current_sample = deepcopy(new_sample)
+                    e_current = e_new
+
+                else:
+                    if verbose:
+                        print("rejected")
+                    pass
+
+            if save_traj:
+                trajectory.append(current_sample)
+            energies.append(e_current)
+
+            if verbose:
+                # print(current_sample)
+                print("-----------------")
+        return SimulatedAnnealingResults(current_sample, energies, trajectory)
