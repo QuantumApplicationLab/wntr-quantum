@@ -4,7 +4,7 @@ from .base_step import BaseStep
 
 class RandomStep(BaseStep):  # noqa: D101
 
-    def __call__(self, x):
+    def __call__(self, x, verbose=False):
         """Call function of the method.
 
         Args:
@@ -23,7 +23,7 @@ class RandomStep(BaseStep):  # noqa: D101
 
 class IncrementalStep(BaseStep):
 
-    def __call__(self, x):
+    def __call__(self, x, verbose=False):
         """Call function of the method.
 
         Args:
@@ -71,7 +71,8 @@ class IncrementalStep(BaseStep):
 
         # convert back to binary repr
         new_data = np.array([int(i) for i in new_val])[::-1]
-        print(random_val_name, data, "=>", new_data)
+        if verbose:
+            print(random_val_name, data, "=>", new_data)
 
         # inject in the x vector
         for ix, nd in zip(idx, new_data):

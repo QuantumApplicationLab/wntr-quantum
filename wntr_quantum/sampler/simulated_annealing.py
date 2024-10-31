@@ -106,7 +106,7 @@ class SimulatedAnnealing:  # noqa: D101
 
     def sample(
         self,
-        bqm,
+        qubo,
         num_sweeps=100,
         Temp=[1e5, 1e-3],
         Tschedule=None,
@@ -127,18 +127,35 @@ class SimulatedAnnealing:  # noqa: D101
             save_traj (bool, optional): save the trajectory. Defaults to False
             verbose(bool, optional):
         """
+        # def bqm_energy(bqm, input, var_names):  # noqa: D417
+        #     """Compute the energy of a given binary array.
 
-        def bqm_energy(bqm, input, var_names):  # noqa: D417
-            """Compute the energy of a given binary array.
+        #     Args:
+        #         bqm (bqm)
+        #         x (_type_): _description_
+        #         var_names (list): list of var names
+        #     """
+        #     return bqm.energies(as_samples((input, var_names)))
+
+        def bqm_energy(qubo, input, var_names):
+            """_summary_.
 
             Args:
-                bqm (bqm)
-                x (_type_): _description_
-                var_names (list): list of var names
-            """
-            return bqm.energies(as_samples((input, var_names)))
+                qubo (_type_): _description_
+                input (_type_): _description_
+                var_names (_type_): _description_
 
-        self.bqm = bqm
+            Raises:
+                ValueError: _description_
+
+            Returns:
+                _type_: _description_
+            """
+            return qubo.energy_binary_rep(
+                np.array(input)[qubo.index_variables].tolist()
+            )
+
+        self.bqm = qubo.qubo_dict
 
         # check that take_step is callable
         if not callable(take_step):
@@ -149,7 +166,7 @@ class SimulatedAnnealing:  # noqa: D101
 
         # define the initial state
         if init_sample is None:
-            current_sample = np.random.randint(2, size=bqm.num_variables)
+            current_sample = np.random.randint(2, size=self.bqm.num_variables)
         else:
             current_sample = init_sample
 
@@ -164,15 +181,15 @@ class SimulatedAnnealing:  # noqa: D101
 
         # initialize the energy
         energies = []
-        e_current = bqm_energy(self.bqm, current_sample, self.var_names)
+        e_current = bqm_energy(qubo, current_sample, self.var_names)
         energies.append(e_current)
 
         # loop over the temp schedule
         for T in tqdm(Tschedule):
 
             # new point
-            new_sample = take_step(deepcopy(current_sample))
-            e_new = bqm_energy(self.bqm, new_sample, self.var_names)
+            new_sample = take_step(deepcopy(current_sample), verbose=verbose)
+            e_new = bqm_energy(qubo, new_sample, self.var_names)
 
             # accept/reject
             if e_new < e_current:
