@@ -60,7 +60,7 @@ def plot_solutions(solutions, references):
 # Create a water network model
 inp_file = "./networks/Net0_CM.inp"
 inp_file = "./networks/Net0.inp"
-# inp_file = './networks/Net2LoopsDW.inp'
+inp_file = "./networks/Net2LoopsCM.inp"
 wn_ref = wntr.network.WaterNetworkModel(inp_file)
 
 # store the results
@@ -68,71 +68,70 @@ energies = []
 solutions = []
 encoded_reference_solutions = []
 
-# iterate over a bunch of confs
-Nsim = 100
+# copy the nework
+wn = deepcopy(wn_ref)
+
+# change pipe diams
+# for pipe_name in wn.link_name_list:
+#     pipe = wn.get_link(pipe_name)
+#     eps = 0.9 + 0.2 * np.random.rand()
+#     pipe.diameter *= eps
+
+# solve classcaly
+sim = wntr.sim.EpanetSimulator(wn)
+results = sim.run_sim()
+
+# extract ref values
+ref_pressure = results.node["pressure"].values[0]
+ref_rate = results.link["flowrate"].values[0]
+ref_values = np.append(ref_rate, ref_pressure)
+ref_values
+
+# create qubo encoding for the flow
+nqbit = 11
+step = 15 / (2**nqbit - 1)
+flow_encoding = PositiveQbitEncoding(
+    nqbit=nqbit, step=step, offset=+0, var_base_name="x"
+)
+
+# create qubo encoding for the heads
+nqbit = 11
+step = 500 / (2**nqbit - 1)
+head_encoding = PositiveQbitEncoding(
+    nqbit=nqbit, step=step, offset=+500.0, var_base_name="x"
+)
+
+# create qubosolver
+net = QuboPolynomialSolver(wn, flow_encoding=flow_encoding, head_encoding=head_encoding)
+
+# create model
+model, model_updater = create_hydraulic_model_for_qubo(wn)
+net.create_index_mapping(model)
+net.matrices = net.initialize_matrices(model)
+
+# solve qubo classically
+ref_sol, encoded_ref_sol, bin_rep_sol, cvgd = net.classical_solutions()
+encoded_reference_solutions.append(encoded_ref_sol)
+
+# sampler
+sampler = SimulatedAnnealing()
+
+# create the solver attribute
+net.qubo = QUBOPS_MIXED(net.mixed_solution_vector, {"sampler": sampler})
+matrices = tuple(sparse.COO(m) for m in net.matrices)
+net.qubo.qubo_dict = net.qubo.create_bqm(matrices, strength=0)
+
+# create step
+var_names = sorted(net.qubo.qubo_dict.variables)
+net.qubo.create_variables_mapping()
+mystep = IncrementalStep(
+    var_names, net.qubo.mapped_variables, net.qubo.index_variables, step_size=25
+)
+
+Nsim = 10
 for i in range(Nsim):
+
     print("==== %d / %d ====" % (i, Nsim))
-    # copy the nework
-    wn = deepcopy(wn_ref)
-
-    # change pipe diams
-    # for pipe_name in wn.link_name_list:
-    #     pipe = wn.get_link(pipe_name)
-    #     eps = 0.9 + 0.2 * np.random.rand()
-    #     pipe.diameter *= eps
-
-    # solve classcaly
-    sim = wntr.sim.EpanetSimulator(wn)
-    results = sim.run_sim()
-
-    # extract ref values
-    ref_pressure = results.node["pressure"].values[0][:2]
-    ref_rate = results.link["flowrate"].values[0]
-    ref_values = np.append(ref_rate, ref_pressure)
-    ref_values
-
-    # create qubo encoding for the flow
-    nqbit = 7
-    step = 4.0 / (2**nqbit - 1)
-    flow_encoding = PositiveQbitEncoding(
-        nqbit=nqbit, step=step, offset=+0, var_base_name="x"
-    )
-
-    # create qubo encoding for the heads
-    nqbit = 7
-    step = 200 / (2**nqbit - 1)
-    head_encoding = PositiveQbitEncoding(
-        nqbit=nqbit, step=step, offset=+0.0, var_base_name="x"
-    )
-
-    # create qubosolver
-    net = QuboPolynomialSolver(
-        wn, flow_encoding=flow_encoding, head_encoding=head_encoding
-    )
-
-    # create model
-    model, model_updater = create_hydraulic_model_for_qubo(wn)
-    net.create_index_mapping(model)
-    net.matrices = net.initialize_matrices(model)
-
-    # solve qubo classically
-    ref_sol, encoded_ref_sol, bin_rep_sol, cvgd = net.classical_solutions()
-    encoded_reference_solutions.append(encoded_ref_sol)
-
-    # sampler
-    sampler = SimulatedAnnealing()
-
-    # create the solver attribute
-    net.qubo = QUBOPS_MIXED(net.mixed_solution_vector, {"sampler": sampler})
-    matrices = tuple(sparse.COO(m) for m in net.matrices)
-    net.qubo.qubo_dict = net.qubo.create_bqm(matrices, strength=0)
-
-    # create step
-    var_names = sorted(net.qubo.qubo_dict.variables)
-    net.qubo.create_variables_mapping()
-    mystep = IncrementalStep(
-        var_names, net.qubo.mapped_variables, net.qubo.index_variables, step_size=10
-    )
 
     # generate init sample
     # x = modify_solution_sample(net, bin_rep_sol, modify=["flows", "heads"])
@@ -143,15 +142,20 @@ for i in range(Nsim):
     eref = net.qubo.energy_binary_rep(bin_rep_sol)
 
     # temperature schedule
-    num_sweeps = 2000
-    Tinit = 1e1
-    Tfinal = 1e-1
+    num_sweeps = 4000
+    Tinit = 1e6
+    Tfinal = 1e1
     Tschedule = np.linspace(Tinit, Tfinal, num_sweeps)
     Tschedule = np.append(Tschedule, Tfinal * np.ones(1000))
-    Tschedule = np.append(Tschedule, np.zeros(1000))
+
+    num_sweeps = 4000
+    Tinit = 1e1
+    Tfinal = 0
+    Tschedule = np.append(Tschedule, np.linspace(Tinit, Tfinal, num_sweeps))
+    Tschedule = np.append(Tschedule, Tfinal * np.ones(100))
 
     # sample flow + head
-    mystep.optimize_values = np.arange(4, 6)
+    mystep.optimize_values = np.arange(8, 22)
     res = sampler.sample(
         net.qubo,
         init_sample=x0,
@@ -161,30 +165,41 @@ for i in range(Nsim):
         verbose=False,
     )
 
-    # sample flow
-    mystep.optimize_values = np.arange(2, 4)
-    res = sampler.sample(
-        net.qubo,
-        init_sample=res.res,
-        Tschedule=Tschedule,
-        take_step=mystep,
-        save_traj=True,
-        verbose=False,
-    )
+    # # temperature schedule
+    # num_sweeps = 2000
+    # Tinit = 1e1
+    # Tfinal = 0
+    # Tschedule = np.linspace(Tinit, Tfinal, num_sweeps)
+    # Tschedule = np.append(Tschedule, Tfinal * np.ones(1000))
 
-    # sample flow + head
-    mystep.optimize_values = np.arange(4, 6)
-    res = sampler.sample(
-        net.qubo,
-        init_sample=res.res,
-        Tschedule=Tschedule,
-        take_step=mystep,
-        save_traj=True,
-        verbose=False,
-    )
+    # # sampler flow
+    # mystep.optimize_values = np.arange(8, 16)
+    # res = sampler.sample(
+    #     net.qubo.qubo_dict,
+    #     init_sample=res.res,
+    #     Tschedule=Tschedule,
+    #     take_step=mystep,
+    #     save_traj=True,
+    # )
+
+    # # temperature scheudule
+    # num_sweeps = 5000
+    # Tinit = 1e2
+    # Tfinal = 0
+    # Tschedule = np.linspace(Tinit, Tfinal, num_sweeps)
+    # Tschedule = np.append(Tschedule, Tfinal * np.ones(1000))
+
+    # # sampler flow
+    # mystep.optimize_values = np.arange(16)
+    # res = sampler.sample(
+    #     net.qubo.qubo_dict,
+    #     init_sample=res.res,
+    #     Tschedule=Tschedule,
+    #     take_step=mystep,
+    #     save_traj=True,
+    # )
 
     mystep.verify_quadratic_constraints(res.res)
-    # qubo_results.append(res)
 
     # compute final
     idx_min = np.array([e for e in res.energies]).argmin()

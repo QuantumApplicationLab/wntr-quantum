@@ -204,10 +204,7 @@ class SimulatedAnnealing:  # noqa: D101
 
                 p = np.exp((e_current - e_new) / (T + 1e-12))
                 eps = np.random.rand()
-                # if verbose:
-                #     print(
-                #         "Temp: %f, eps: %f, p: %f, accepted %r" % (T, eps, p, eps < p)
-                #     )
+
                 if eps < p:
                     current_sample = deepcopy(new_sample)
                     e_current = e_new

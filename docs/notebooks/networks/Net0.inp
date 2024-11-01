@@ -95,7 +95,7 @@ File obtained via Mario of a 2 node sysem
  Specific Gravity   	1
  Viscosity          	1
  Trials             	50
- Accuracy           	0.001
+ Accuracy           	0.1
  CHECKFREQ          	2
  MAXCHECK           	10
  DAMPLIMIT          	0

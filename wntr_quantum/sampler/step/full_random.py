@@ -21,66 +21,72 @@ class RandomStep(BaseStep):  # noqa: D101
         return x
 
 
-class IncrementalStep(BaseStep):
+class IncrementalStep(BaseStep):  # noqa: D101
 
     def __call__(self, x, verbose=False):
         """Call function of the method.
 
         Args:
             x (_type_): _description_
+            verbose (bool): print suff
 
         Returns:
             _type_: _description_
         """
-        random_val_name = np.random.choice(self.value_names[self.optimize_values])
-        idx = self.index_values[random_val_name]
-        data = np.array(x)[idx]
-        width = len(data)
+        num_var_changed = np.random.randint(len(self.optimize_values))
+        random_val_name_list = np.random.choice(
+            self.value_names[self.optimize_values], size=num_var_changed
+        )
 
-        # determine the max val
-        max_val = int("1" * width, base=2)
+        for random_val_name in random_val_name_list:
+            idx = self.index_values[random_val_name]
+            data = np.array(x)[idx]
+            width = len(data)
 
-        # check if we reach min/max val
-        max_val_check = data.prod() == 1
-        min_val_check = data.sum() == 0
+            # determine the max val
+            max_val = int("1" * width, base=2)
 
-        # convert to int value
-        val = int("".join([str(i) for i in data[::-1]]), base=2)
+            # check if we reach min/max val
+            max_val_check = data.prod() == 1
+            min_val_check = data.sum() == 0
 
-        # determine sign of the displacement
-        if min_val_check:
-            # print("min val reached")
-            sign = 1
-        elif max_val_check:
-            # print("max val reached")
-            sign = -1
-        else:
-            sign = 2 * np.random.randint(2) - 1
+            # convert to int value
+            val = int("".join([str(i) for i in data[::-1]]), base=2)
 
-        # new value
-        if self.step_size <= 1:
-            delta = 1
-        else:
-            delta = np.random.randint(self.step_size)
-        new_val = val + sign * delta
-        if new_val < 0:
-            new_val = 0
-        if new_val > max_val:
-            new_val = max_val
-        new_val = np.binary_repr(new_val, width=width)
+            # determine sign of the displacement
+            if min_val_check:
+                # print("min val reached")
+                sign = 1
+            elif max_val_check:
+                # print("max val reached")
+                sign = -1
+            else:
+                sign = 2 * np.random.randint(2) - 1
 
-        # convert back to binary repr
-        new_data = np.array([int(i) for i in new_val])[::-1]
-        if verbose:
-            print(random_val_name, data, "=>", new_data)
+            # new value
+            if self.step_size <= 1:
+                delta = 1
+            else:
+                delta = np.random.randint(self.step_size)
+            new_val = val + sign * delta
+            if new_val < 0:
+                new_val = 0
+            if new_val > max_val:
+                new_val = max_val
+            new_val = np.binary_repr(new_val, width=width)
 
-        # inject in the x vector
-        for ix, nd in zip(idx, new_data):
-            x[ix] = nd
+            # convert back to binary repr
+            new_data = np.array([int(i) for i in new_val])[::-1]
+            if verbose:
+                print(random_val_name, data, "=>", new_data)
 
-        # fix constraints
-        for vidx in idx:
-            self.fix_constraint(x, vidx)
+            # inject in the x vector
+            for ix, nd in zip(idx, new_data):
+                x[ix] = nd
+
+            # fix constraints
+            for vidx in idx:
+                self.fix_constraint(x, vidx)
 
         return x
 
