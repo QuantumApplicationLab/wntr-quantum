@@ -34,18 +34,16 @@ def generate_random_valid_sample(qubo):
     return sample
 
 
-def modify_solution_sample(net, solution, modify=["signs", "flows", "heads"]):
-    """_summary_
+def modify_solution_sample(net, solution, modify=["signs", "flows", "heads"]) -> list:
+    """Modiy the solution sample to change values of the signs/flows/heads.
 
     Args:
-        qubo (_type_): _description_
-        solution (_type_): _description_
-
-    Raises:
-        ValueError: _description_
+        net (qubo_solver): The QUBO solver
+        solution (list): the sample that encoded the true solution
+        modify (list, optional): what to change. Defaults to ["signs", "flows", "heads"].
 
     Returns:
-        _type_: _description_
+        List: new sample
     """
 
     def flatten_list(lst):
@@ -67,7 +65,7 @@ def modify_solution_sample(net, solution, modify=["signs", "flows", "heads"]):
     num_pipes = net.wn.num_pipes
     num_heads = net.wn.num_junctions
 
-    # modsify sign
+    # modify sign
     if "signs" in modify:
         for i in range(num_pipes):
             mod_bin_rep_sol[i] = np.random.randint(2)
@@ -118,38 +116,27 @@ class SimulatedAnnealing:  # noqa: D101
         """Sample the problem.
 
         Args:
-            bqm (_type_): _description_
+            qubo (qubo solver): qubo solver
             num_sweeps (int, optional): _description_. Defaults to 100.
             Temp (list, optional): _description_. Defaults to [1e5, 1e-3].
             Tschedule (list, optional): The temperature schedule
             init_sample (_type_, optional): _description_. Defaults to None.
             take_step (_type_, optional): _description_. Defaults to None.
             save_traj (bool, optional): save the trajectory. Defaults to False
-            verbose(bool, optional):
+            verbose (bool, optional): print stuff
         """
-        # def bqm_energy(bqm, input, var_names):  # noqa: D417
-        #     """Compute the energy of a given binary array.
-
-        #     Args:
-        #         bqm (bqm)
-        #         x (_type_): _description_
-        #         var_names (list): list of var names
-        #     """
-        #     return bqm.energies(as_samples((input, var_names)))
 
         def bqm_energy(qubo, input, var_names):
-            """_summary_.
+            """Computes the energy of the sample.
 
             Args:
-                qubo (_type_): _description_
-                input (_type_): _description_
-                var_names (_type_): _description_
+                qubo (qubo_solver): qubo solver
+                input (list): sample
+                var_names (list): names of the variables
 
-            Raises:
-                ValueError: _description_
 
             Returns:
-                _type_: _description_
+                float: qubo energy
             """
             return qubo.energy_binary_rep(
                 np.array(input)[qubo.index_variables].tolist()
@@ -219,6 +206,5 @@ class SimulatedAnnealing:  # noqa: D101
             energies.append(e_current)
 
             if verbose:
-                # print(current_sample)
                 print("-----------------")
         return SimulatedAnnealingResults(current_sample, energies, trajectory)

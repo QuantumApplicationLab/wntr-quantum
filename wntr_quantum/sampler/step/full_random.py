@@ -8,10 +8,11 @@ class RandomStep(BaseStep):  # noqa: D101
         """Call function of the method.
 
         Args:
-            x (_type_): _description_
+            x (list): initial sample
+            verbose (bool): print stuff
 
         Returns:
-            _type_: _description_
+            list: proposed sample
         """
         random_val_name = np.random.choice(self.value_names[self.optimize_values])
         idx = self.index_values[random_val_name]
@@ -27,11 +28,11 @@ class IncrementalStep(BaseStep):  # noqa: D101
         """Call function of the method.
 
         Args:
-            x (_type_): _description_
-            verbose (bool): print suff
+            x (list): initial sample
+            verbose (bool): print stuff
 
         Returns:
-            _type_: _description_
+            list: proposed sample
         """
         num_var_changed = np.random.randint(len(self.optimize_values))
         random_val_name_list = np.random.choice(
@@ -55,10 +56,8 @@ class IncrementalStep(BaseStep):  # noqa: D101
 
             # determine sign of the displacement
             if min_val_check:
-                # print("min val reached")
                 sign = 1
             elif max_val_check:
-                # print("max val reached")
                 sign = -1
             else:
                 sign = 2 * np.random.randint(2) - 1
@@ -89,27 +88,3 @@ class IncrementalStep(BaseStep):  # noqa: D101
                 self.fix_constraint(x, vidx)
 
         return x
-
-
-class ParallelIncrementalStep(BaseStep):
-
-    def __init__(self, var_names, single_var_names, single_var_index, step_size=1):
-        super().__init__(var_names, single_var_names, single_var_index)
-        self.step_size = step_size
-        self._step = IncrementalStep(
-            var_names, single_var_names, single_var_index, step_size=step_size
-        )
-
-    def __call__(self, x):
-        """Call function of the method.
-
-        Args:
-            x (_type_): _description_
-
-        Returns:
-            _type_: _description_
-        """
-        new_x = []
-        for xi in x:
-            new_x.append(self._step(xi))
-        return new_x

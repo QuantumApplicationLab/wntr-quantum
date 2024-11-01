@@ -2,7 +2,7 @@ import numpy as np
 
 
 class BaseStep:  # noqa: D101
-    def __init__(
+    def __init__(  # noqa: D417
         self,
         var_names,
         single_var_names,
@@ -13,9 +13,11 @@ class BaseStep:  # noqa: D101
         """Propose a new solution vector.
 
         Args:
-            var_names (_type_): _description_
-            single_var_names (_type_): _description_
-            single_var_index (_type_): _description_
+            var_names (list): names of the variables in the problem
+            single_var_names (_type_): list of the single variables names e.g. x_001_002
+            single_var_index (_type_): index of the single variables
+            step_size (int, optional): size of the steps
+            optimize_values (list, optional): index of the values to optimize
         """
         self.var_names = var_names
         self.single_var_names = single_var_names
@@ -37,11 +39,14 @@ class BaseStep:  # noqa: D101
             self.optimize_values = list(np.arange(len(self.value_names)))
 
     @staticmethod
-    def _get_variable_root_name(var_name):
+    def _get_variable_root_name(var_name) -> str:
         """Extract the root name of the variables.
 
         Args:
-            var_name (_type_): _description_
+            var_name (str): variable name
+
+        Returns:
+            str: root name
         """
         return "_".join(var_name.split("_")[:2])
 
@@ -49,7 +54,7 @@ class BaseStep:  # noqa: D101
         """Define the mapping of the higher order terms.
 
         Returns:
-            _type_: _description_
+            list: mapping of the higher order terms
         """
         high_order_terms_mapping = []
 
@@ -83,11 +88,11 @@ class BaseStep:  # noqa: D101
         """Ensure that the solution vectors respect quadratization.
 
         Args:
-            x (_type_): _description_
-            idx (_type_): _description_
+            x (list): sample
+            idx (int): index of the element that has changed
 
         Returns:
-            _type_: _description_
+            list: new sampel that respects quadratization constraints
         """
         fix_var = self.high_order_terms_mapping[idx]
         for idx_fix, idx_prods in fix_var.items():
@@ -98,7 +103,7 @@ class BaseStep:  # noqa: D101
         """Check if quadratic constraints are respected or not.
 
         Args:
-            data (_type_): _description_
+            data (list): sample
         """
         for v, d in zip(self.var_names, data):
             if v not in self.single_var_names:
@@ -118,13 +123,14 @@ class BaseStep:  # noqa: D101
                         idx = self.single_var_index[self.single_var_names.index(vtmp)]
                         print("%s = %d" % (vtmp, data[idx]))
 
-    def __call__(self, x):
+    def __call__(self, x, verbose=False):
         """Call function of the method.
 
         Args:
-            x (_type_): _description_
+            x (list): sample
+            verbose (bool): print stuff
 
         Returns:
-            _type_: _description_
+            list: new sample
         """
         raise NotImplementedError("Implement a __call__ method")
