@@ -440,7 +440,7 @@ class QuboPolynomialSolver(object):
             self.head_index_mapping[val.name] = 2 * num_flow_var + idx
             idx += 1
 
-    def solve(  # noqa: D417
+    def run_sim(  # noqa: D417
         self,
         model: Model,
         strength: float = 1e6,
