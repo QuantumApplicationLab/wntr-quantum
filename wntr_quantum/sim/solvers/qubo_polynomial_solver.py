@@ -113,9 +113,7 @@ class QuboPolynomialSolver(object):
         sign = np.sign(input)
         return p0 + p1 @ input + (p2 @ (sign * input * input))
 
-    def classical_solutions(
-        self, max_iter: int = 100, tol: float = 1e-10
-    ) -> np.ndarray:
+    def classical_solution(self, max_iter: int = 100, tol: float = 1e-10) -> np.ndarray:
         """Computes the solution using a classical Newton Raphson approach.
 
         Args:
@@ -440,7 +438,7 @@ class QuboPolynomialSolver(object):
             self.head_index_mapping[val.name] = 2 * num_flow_var + idx
             idx += 1
 
-    def run_sim(  # noqa: D417
+    def solve(  # noqa: D417
         self,
         model: Model,
         strength: float = 1e6,

@@ -299,7 +299,7 @@ class QUBODesignPipeDiameter(object):
             for p in params:
                 pvalues += p
             price, diameters = self.get_pipe_info_from_hot_encoding(pvalues)
-            sol = self.compute_classical_solution(pvalues, convert_to_si=convert_to_si)
+            sol, _, _, _ = self.classical_solution(pvalues, convert_to_si=convert_to_si)
             print(price, diameters, sol)
 
     def convert_solution_to_si(self, solution: np.ndarray) -> np.ndarray:
@@ -338,11 +338,15 @@ class QUBODesignPipeDiameter(object):
             new_sol[ih] = from_si(FlowUnits.CFS, solution[ih], HydParam.Length)
         return new_sol
 
-    def compute_classical_solution(self, parameters, convert_to_si=True):
+    def classical_solution(
+        self, parameters, max_iter: int = 100, tol: float = 1e-10, convert_to_si=True
+    ):
         """Computes the classical solution for a values of the hot encoding parameters.
 
         Args:
             parameters (List): list of the one hot encoding values e.g. [1,0,1,0]
+            max_iter (int, optional): number of iterations of the NR. Defaults to 100.
+            tol (float, optional): Toleracne of the NR. Defaults to 1e-10.
             convert_to_si (bool): convert to si
 
         Returns:
@@ -407,11 +411,39 @@ class QUBODesignPipeDiameter(object):
             return sol.reshape(-1)
 
         initial_point = np.random.rand(num_pipes + num_heads)
-        res = newton_raphson(func, initial_point)
-        assert np.allclose(func(res.solution), 0)
+        res = newton_raphson(func, initial_point, max_iter=max_iter, tol=tol)
+        sol = res.solution
+        converged = np.allclose(func(sol), 0)
+        if not converged:
+            print("Warning solution not converged")
+
+        # get the closest encoded solution and binary encoding
+        bin_rep_sol = []
+        for i in range(num_pipes):
+            bin_rep_sol.append(int(sol[i] > 0))
+
+        encoded_sol = np.zeros_like(sol)
+        for idx, s in enumerate(sol):
+            val, bin_rpr = self.mixed_solution_vector.encoded_reals[
+                idx + num_pipes
+            ].find_closest(np.abs(s))
+            bin_rep_sol.append(bin_rpr)
+            encoded_sol[idx] = np.sign(s) * val
+
         if convert_to_si:
-            return self.convert_solution_to_si(res.solution)
-        return res.solution
+            sol = self.convert_solution_to_si(sol)
+            encoded_sol = self.convert_solution_to_si(encoded_sol)
+
+            # remove the height of the junctions
+            for i in range(self.wn.num_junctions):
+                sol[num_pipes + i] -= self.wn.nodes[
+                    self.wn.junction_name_list[i]
+                ].elevation
+                encoded_sol[num_pipes + i] -= self.wn.nodes[
+                    self.wn.junction_name_list[i]
+                ].elevation
+
+        return (sol, encoded_sol, bin_rep_sol, converged)
 
     def get_cost_matrix(self, matrices):
         """Add the equation that ar sued to maximize the pipe coefficiens and therefore minimize the diameter.
@@ -626,7 +658,7 @@ class QUBODesignPipeDiameter(object):
         matrices = tuple(sparse.COO(m) for m in self.matrices)
 
         # create the BQM
-        self.bqm = self.qubo.create_bqm(matrices, strength=strength)
+        self.qubo.qubo_dict = self.qubo.create_bqm(matrices, strength=strength)
 
         # add constraints on the hot encoding
         # the sum of each hot encoding variable of a given pipe must equals 1
@@ -650,7 +682,7 @@ class QUBODesignPipeDiameter(object):
                     )
                 )
             # add the constraints
-            self.bqm.add_linear_equality_constraint(
+            self.qubo.qubo_dict.add_linear_equality_constraint(
                 expr, lagrange_multiplier=strength, constant=-1
             )
             istart += self.num_diameters
@@ -659,7 +691,7 @@ class QUBODesignPipeDiameter(object):
         istart = 2 * self.sol_vect_flows.size
         for i in range(self.sol_vect_heads.size):
 
-            self.bqm.add_linear_inequality_constraint(
+            self.qubo.qubo_dict.add_linear_inequality_constraint(
                 self.qubo.all_expr[istart + i],
                 lagrange_multiplier=1,
                 label="head_%s" % i,
@@ -668,7 +700,7 @@ class QUBODesignPipeDiameter(object):
             )
 
         # sample
-        self.sampleset = self.qubo.sample_bqm(self.bqm, num_reads=num_reads)
+        self.sampleset = self.qubo.sample_bqm(self.qubo.qubo_dict, num_reads=num_reads)
 
         # decode
         sol = self.qubo.decode_solution(self.sampleset.lowest().record[0][0])
