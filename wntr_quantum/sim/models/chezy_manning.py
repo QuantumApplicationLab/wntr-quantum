@@ -248,7 +248,7 @@ def get_pipe_design_chezy_manning_qubops_matrix(
         # linear term (start head value) of the headloss approximation
         if isinstance(start_node, wntr.network.Junction):
             start_node_index = head_index_mapping[m.head[start_node_name].name]
-            P1[ieq, start_node_index] = 1
+            P1[ieq, start_node_index] += 1
         else:
             start_h = m.source_head[start_node_name]
             P0[ieq, 0] += from_si(FlowUnits.CFS, start_h.value, HydParam.Length)
@@ -256,7 +256,7 @@ def get_pipe_design_chezy_manning_qubops_matrix(
         # linear term (end head values) of the headloss approximation
         if isinstance(end_node, wntr.network.Junction):
             end_node_index = head_index_mapping[m.head[end_node_name].name]
-            P1[ieq, end_node_index] = -1
+            P1[ieq, end_node_index] -= 1
         else:
             end_h = m.source_head[end_node_name]
             P0[ieq, 0] -= from_si(FlowUnits.CFS, end_h.value, HydParam.Length)
