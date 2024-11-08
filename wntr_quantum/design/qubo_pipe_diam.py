@@ -1,5 +1,6 @@
 import itertools
 from collections import OrderedDict
+from copy import deepcopy
 from typing import List
 from typing import Tuple
 import numpy as np
@@ -37,6 +38,7 @@ class QUBODesignPipeDiameter(object):
         pipe_diameters: List,
         head_lower_bound: float,
         weight_cost: float = 1e-1,
+        weight_pressure: float = 1.0,
     ):  # noqa: D417
         """Initialize the designer object.
 
@@ -47,6 +49,7 @@ class QUBODesignPipeDiameter(object):
             pipe_diameters (List): List of pipe diameters in SI
             head_lower_bound (float): minimum value for the head pressure values (US units)
             weight_cost (float, optional): weight for the cost optimization. Defaults to 1e-1.
+            weight_pressure (float, optional): weight for the pressure optimization. Defaults to 1.
         """
         # water network
         self.wn = wn
@@ -100,6 +103,9 @@ class QUBODesignPipeDiameter(object):
 
         # weight for the cost equation
         self.weight_cost = weight_cost
+
+        # weight for the pressure penalty
+        self.weight_pressure = weight_pressure
 
         # lower bound for the pressure
         self.head_lower_bound = head_lower_bound
@@ -293,14 +299,17 @@ class QUBODesignPipeDiameter(object):
             tmp[idiam] = 1
             encoding.append(tmp)
 
-        print("price \t diameters \t variables")
+        print("price \t diameters \t variables\t energy")
         for params in itertools.product(encoding, repeat=self.wn.num_pipes):
             pvalues = []
             for p in params:
                 pvalues += p
             price, diameters = self.get_pipe_info_from_hot_encoding(pvalues)
-            sol, _, _, _ = self.classical_solution(pvalues, convert_to_si=convert_to_si)
-            print(price, diameters, sol)
+            sol, _, bin_rep_sol, _ = self.classical_solution(
+                pvalues, convert_to_si=convert_to_si
+            )
+            energy = self.qubo.energy_binary_rep(bin_rep_sol)
+            print(price, diameters, sol, energy[0])
 
     def convert_solution_to_si(self, solution: np.ndarray) -> np.ndarray:
         """Converts the solution to SI.
@@ -357,7 +366,7 @@ class QUBODesignPipeDiameter(object):
         num_signs = self.wn.num_pipes
         num_pipes = self.wn.num_pipes
         num_vars = num_heads + 2 * num_pipes
-
+        original_parameters = deepcopy(parameters)
         if self.wn.options.hydraulic.headloss == "C-M":
             p0 = P0[:-1].reshape(-1, 1)
             p1 = P1[:-1, num_signs:num_vars] + P2.sum(1)[:-1, num_signs:num_vars]
@@ -429,6 +438,10 @@ class QUBODesignPipeDiameter(object):
             ].find_closest(np.abs(s))
             bin_rep_sol.append(bin_rpr)
             encoded_sol[idx] = np.sign(s) * val
+
+        # add the pipe parameter bnary variables
+        for p in original_parameters:
+            bin_rep_sol.append(p)
 
         if convert_to_si:
             sol = self.convert_solution_to_si(sol)
@@ -522,6 +535,21 @@ class QUBODesignPipeDiameter(object):
         matrices = self.get_cost_matrix(matrices)
 
         return matrices
+
+    @staticmethod
+    def combine_flow_values(solution: List) -> List:
+        """Combine the values of the flow sign*abs.
+
+        Args:
+            solution (List): solution vector
+
+        Returns:
+            List: solution vector
+        """
+        flow = []
+        for sign, abs in zip(solution[0], solution[1]):
+            flow.append(sign * abs)
+        return flow + solution[2]
 
     @staticmethod
     def flatten_solution_vector(solution: Tuple) -> List:
@@ -636,30 +664,11 @@ class QUBODesignPipeDiameter(object):
                     )
                     idx += 1
 
-    def solve(  # noqa: D417
-        self, strength: float = 1e6, num_reads: int = 10000, **options
-    ) -> Tuple:
-        """Solves the Hydraulics equations.
-
-        Args:
-            strength (float, optional): substitution strength. Defaults to 1e6.
-            num_reads (int, optional): number of reads for the sampler. Defaults to 10000.
-
-        Returns:
-            Tuple: Succes message
-        """
-        # create the index mapping of the variables
-        self.create_index_mapping()
-
-        # compute the polynomial matrices
-        self.matrices = self.initialize_matrices()
-
-        self.qubo = QUBOPS_MIXED(self.mixed_solution_vector, **options)
-        matrices = tuple(sparse.COO(m) for m in self.matrices)
-
-        # create the BQM
-        self.qubo.qubo_dict = self.qubo.create_bqm(matrices, strength=strength)
-
+    def add_switch_constraints(
+        self,
+        strength: float = 1e6,
+    ):
+        """Add the conrains regarding the pipe diameter switch."""
         # add constraints on the hot encoding
         # the sum of each hot encoding variable of a given pipe must equals 1
         istart = (
@@ -687,17 +696,49 @@ class QUBODesignPipeDiameter(object):
             )
             istart += self.num_diameters
 
+    def add_pressure_constraints(self):
+        """Add the conrains regarding the presure."""
         # add constraint on head pressures
         istart = 2 * self.sol_vect_flows.size
         for i in range(self.sol_vect_heads.size):
 
             self.qubo.qubo_dict.add_linear_inequality_constraint(
                 self.qubo.all_expr[istart + i],
-                lagrange_multiplier=1,
+                lagrange_multiplier=self.weight_pressure,
                 label="head_%s" % i,
                 lb=self.head_lower_bound,
                 ub=self.head_upper_bound,
             )
+
+    def solve(  # noqa: D417
+        self, strength: float = 1e6, num_reads: int = 10000, **options
+    ) -> Tuple:
+        """Solves the Hydraulics equations.
+
+        Args:
+            strength (float, optional): substitution strength. Defaults to 1e6.
+            num_reads (int, optional): number of reads for the sampler. Defaults to 10000.
+
+        Returns:
+            Tuple: Success message
+        """
+        # create the index mapping of the variables
+        self.create_index_mapping()
+
+        # compute the polynomial matrices
+        self.matrices = self.initialize_matrices()
+
+        self.qubo = QUBOPS_MIXED(self.mixed_solution_vector, **options)
+        matrices = tuple(sparse.COO(m) for m in self.matrices)
+
+        # create the BQM
+        self.qubo.qubo_dict = self.qubo.create_bqm(matrices, strength=strength)
+
+        # add constraints for the switch
+        self.add_switch_constraints(strength=strength)
+
+        # add constrants for the pressure
+        self.add_pressure_constraints()
 
         # sample
         self.sampleset = self.qubo.sample_bqm(self.qubo.qubo_dict, num_reads=num_reads)
