@@ -109,7 +109,8 @@ class QUBODesignPipeDiameter(object):
 
         # lower bound for the pressure
         self.head_lower_bound = head_lower_bound
-        self.head_upper_bound = 10 * head_lower_bound  # is that enough ?
+        self.head_upper_bound = 1e3  # 10 * head_lower_bound  # is that enough ?
+        self.target_pressure = head_lower_bound
 
         # store other attributes
         self.qubo = None
@@ -696,19 +697,41 @@ class QUBODesignPipeDiameter(object):
             )
             istart += self.num_diameters
 
-    def add_pressure_constraints(self):
+    def add_pressure_equality_constraints(self, fractional_factor=100):
         """Add the conrains regarding the presure."""
         # add constraint on head pressures
         istart = 2 * self.sol_vect_flows.size
         for i in range(self.sol_vect_heads.size):
+            tmp = []
+            for k, v in self.qubo.all_expr[istart + i]:
+                tmp.append((k, int(fractional_factor * v)))
+            # print(tmp)
+            cst = self.qubo.qubo_dict.add_linear_equality_constraint(
+                tmp,
+                lagrange_multiplier=self.weight_pressure,
+                constant=-self.target_pressure,
+            )
+            # print(cst)
 
-            self.qubo.qubo_dict.add_linear_inequality_constraint(
-                self.qubo.all_expr[istart + i],
+    def add_pressure_constraints(self, fractional_factor=100):
+        """Add the conrains regarding the presure."""
+        # add constraint on head pressures
+        istart = 2 * self.sol_vect_flows.size
+        for i in range(self.sol_vect_heads.size):
+            tmp = []
+            for k, v in self.qubo.all_expr[istart + i]:
+                tmp.append((k, int(fractional_factor * v)))
+            # print(tmp)
+            cst = self.qubo.qubo_dict.add_linear_inequality_constraint(
+                tmp,
                 lagrange_multiplier=self.weight_pressure,
                 label="head_%s" % i,
-                lb=self.head_lower_bound,
-                ub=self.head_upper_bound,
+                lb=fractional_factor * self.head_lower_bound,
+                ub=fractional_factor * self.head_upper_bound,
+                penalization_method="slack",
+                cross_zero=True,
             )
+            # print(cst)
 
     def solve(  # noqa: D417
         self, strength: float = 1e6, num_reads: int = 10000, **options
