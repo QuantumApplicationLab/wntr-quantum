@@ -1,4 +1,6 @@
 import itertools
+from collections import OrderedDict
+from copy import deepcopy
 from typing import List
 from typing import Tuple
 import numpy as np
@@ -17,12 +19,12 @@ from wntr.network import WaterNetworkModel
 from wntr.sim import aml
 from wntr.sim.aml import Model
 from wntr.sim.solvers import SolverStatus
-from ..sim.hydraulics import create_hydraulic_model
 from ..sim.models.chezy_manning import cm_resistance_value
-from ..sim.models.chezy_manning import get_pipe_design_chezy_manning_matrix
+from ..sim.models.chezy_manning import get_pipe_design_chezy_manning_qubops_matrix
 from ..sim.models.darcy_weisbach import dw_resistance_value
-from ..sim.models.darcy_weisbach import get_pipe_design_darcy_wesibach_matrix
-from ..sim.models.mass_balance import get_mass_balance_matrix
+from ..sim.models.darcy_weisbach import get_pipe_design_darcy_wesibach_qubops_matrix
+from ..sim.models.mass_balance import get_mass_balance_qubops_matrix
+from ..sim.qubo_hydraulics import create_hydraulic_model_for_qubo
 
 
 class QUBODesignPipeDiameter(object):
@@ -36,6 +38,7 @@ class QUBODesignPipeDiameter(object):
         pipe_diameters: List,
         head_lower_bound: float,
         weight_cost: float = 1e-1,
+        weight_pressure: float = 1.0,
     ):  # noqa: D417
         """Initialize the designer object.
 
@@ -46,6 +49,7 @@ class QUBODesignPipeDiameter(object):
             pipe_diameters (List): List of pipe diameters in SI
             head_lower_bound (float): minimum value for the head pressure values (US units)
             weight_cost (float, optional): weight for the cost optimization. Defaults to 1e-1.
+            weight_pressure (float, optional): weight for the pressure optimization. Defaults to 1.
         """
         # water network
         self.wn = wn
@@ -54,15 +58,27 @@ class QUBODesignPipeDiameter(object):
         self.pipe_diameters = [p / 1000 for p in pipe_diameters]
         self.num_diameters = len(pipe_diameters)
 
-        # encodings of the head/flow variables
-        self.flow_encoding = flow_encoding
-        self.head_encoding = head_encoding
-        self.sol_vect_flows = SolutionVector(wn.num_pipes, encoding=flow_encoding)
-        self.sol_vect_heads = SolutionVector(wn.num_junctions, encoding=head_encoding)
+        # create the encoding vectors for the sign of the flows
+        self.sign_flow_encoding = PositiveQbitEncoding(
+            nqbit=1, step=2, offset=-1, var_base_name="x"
+        )
 
-        # lower bound for the pressure
-        self.head_lower_bound = head_lower_bound
-        self.head_upper_bound = 10 * head_lower_bound
+        # create the solution vector for the sign
+        self.sol_vect_signs = SolutionVector(
+            wn.num_pipes, encoding=self.sign_flow_encoding
+        )
+
+        # store the flow encoding and create solution vector
+        self.flow_encoding = flow_encoding
+        self.sol_vect_flows = SolutionVector(wn.num_pipes, encoding=flow_encoding)
+        if np.min(self.flow_encoding.get_possible_values()) < 0:
+            raise ValueError(
+                "The encoding of the flows must only take positive values."
+            )
+
+        # store the heqd encoding and create solution vector
+        self.head_encoding = head_encoding
+        self.sol_vect_heads = SolutionVector(wn.num_junctions, encoding=head_encoding)
 
         # one hot encoding for the pipe coefficients
         self.num_hot_encoding = wn.num_pipes * self.num_diameters
@@ -71,11 +87,16 @@ class QUBODesignPipeDiameter(object):
 
         # mixed solution vector
         self.mixed_solution_vector = MixedSolutionVector(
-            [self.sol_vect_flows, self.sol_vect_heads, self.sol_vect_pipes]
+            [
+                self.sol_vect_signs,
+                self.sol_vect_flows,
+                self.sol_vect_heads,
+                self.sol_vect_pipes,
+            ]
         )
 
         # basic hydraulic model
-        self.model, self.model_updater = create_hydraulic_model(wn)
+        self.model, self.model_updater = create_hydraulic_model_for_qubo(wn)
 
         # valies of the pipe diameters/coefficients
         self.get_pipe_data()
@@ -83,8 +104,18 @@ class QUBODesignPipeDiameter(object):
         # weight for the cost equation
         self.weight_cost = weight_cost
 
-        # compute the polynomial matrices
-        self.matrices = self.initialize_matrices()
+        # weight for the pressure penalty
+        self.weight_pressure = weight_pressure
+
+        # lower bound for the pressure
+        self.head_lower_bound = head_lower_bound
+        self.head_upper_bound = 1e3  # 10 * head_lower_bound  # is that enough ?
+        self.target_pressure = head_lower_bound
+
+        # store other attributes
+        self.qubo = None
+        self.flow_index_mapping = None
+        self.head_index_mapping = None
 
     def get_dw_pipe_coefficients(self, link):
         """Get the pipe coefficients for a specific link with DW.
@@ -231,30 +262,35 @@ class QUBODesignPipeDiameter(object):
         fres = self.flow_encoding.get_average_precision()
         fvalues = np.sort(self.flow_encoding.get_possible_values())
         print("Head Encoding : %f => %f (res: %f)" % (hvalues[0], hvalues[-1], hres))
-        print("Flow Encoding : %f => %f (res: %f)" % (fvalues[0], fvalues[-1], fres))
+        print(
+            "Flow Encoding : %f => %f | %f => %f (res: %f)"
+            % (-fvalues[-1], -fvalues[0], fvalues[0], fvalues[-1], fres)
+        )
 
     def verify_solution(self, input, params):
         """Computes the rhs vector associate with the input.
 
         Args:
-            input (np.ndarray): proposed solution
-            params (np.ndarray): parameters of the model
+            input (np.ndarray): proposed solution vector
+            params (list): one-hot encoding vector to select the resistance factor.
 
         Returns:
             np.ndarray: RHS vector
         """
-        P0, P1, P2, P3 = self.matrices
+        P0, P1, P2, P3, P4 = self.matrices
         num_heads = self.wn.num_junctions
+        num_signs = self.wn.num_pipes
         num_pipes = self.wn.num_pipes
-        num_vars = num_heads + num_pipes
+        num_vars = num_heads + 2 * num_pipes
 
-        p0 = P0[:num_vars].reshape(
-            -1,
-        )
-        p1 = P1[:num_vars, :num_vars]
-        p3 = P3[:num_vars].sum(-1)[:, :num_vars, :num_vars].sum(-1)
-        parameters = np.array([0] * num_heads + params)
-        return p0 + p1 @ input + parameters * (p3 @ (input * input))
+        input = input.reshape(-1, 1)
+        p0 = P0[:-1].reshape(-1, 1)
+        p1 = P1[:-1, num_signs:num_vars] + P2.sum(1)[:-1, num_signs:num_vars]
+        p2 = P4.sum(1)[:-1, num_pipes:num_vars, num_pipes:num_vars].sum(-2)
+        parameters = np.array([0] * num_vars + params)
+        p2 = (parameters * p2).sum(-1)
+        sign = np.sign(input)
+        return p0 + p1 @ input + (p2 @ (sign * input * input))
 
     def enumerates_classical_solutions(self, convert_to_si=True):
         """Generates the classical solution."""
@@ -264,14 +300,17 @@ class QUBODesignPipeDiameter(object):
             tmp[idiam] = 1
             encoding.append(tmp)
 
-        print("price \t diameters \t variables")
+        print("price \t diameters \t variables\t energy")
         for params in itertools.product(encoding, repeat=self.wn.num_pipes):
             pvalues = []
             for p in params:
                 pvalues += p
             price, diameters = self.get_pipe_info_from_hot_encoding(pvalues)
-            sol = self.compute_classical_solution(pvalues, convert_to_si=convert_to_si)
-            print(price, diameters, sol)
+            sol, _, bin_rep_sol, _ = self.classical_solution(
+                pvalues, convert_to_si=convert_to_si
+            )
+            energy = self.qubo.energy_binary_rep(bin_rep_sol)
+            print(price, diameters, sol, energy[0])
 
     def convert_solution_to_si(self, solution: np.ndarray) -> np.ndarray:
         """Converts the solution to SI.
@@ -291,51 +330,134 @@ class QUBODesignPipeDiameter(object):
             new_sol[ih] = to_si(FlowUnits.CFS, solution[ih], HydParam.Length)
         return new_sol
 
-    def compute_classical_solution(self, parameters, convert_to_si=True):
+    def convert_solution_from_si(self, solution: np.ndarray) -> np.ndarray:
+        """Converts the solution to SI.
+
+        Args:
+            solution (array): solution vectors in SI
+
+        Returns:
+            Tuple: solution in US units
+        """
+        num_heads = self.wn.num_junctions
+        num_pipes = self.wn.num_pipes
+        new_sol = np.zeros_like(solution)
+        for ip in range(num_pipes):
+            new_sol[ip] = from_si(FlowUnits.CFS, solution[ip], HydParam.Flow)
+        for ih in range(num_pipes, num_pipes + num_heads):
+            new_sol[ih] = from_si(FlowUnits.CFS, solution[ih], HydParam.Length)
+        return new_sol
+
+    def classical_solution(
+        self, parameters, max_iter: int = 100, tol: float = 1e-10, convert_to_si=True
+    ):
         """Computes the classical solution for a values of the hot encoding parameters.
 
         Args:
             parameters (List): list of the one hot encoding values e.g. [1,0,1,0]
+            max_iter (int, optional): number of iterations of the NR. Defaults to 100.
+            tol (float, optional): Toleracne of the NR. Defaults to 1e-10.
             convert_to_si (bool): convert to si
 
         Returns:
             np.mdarray : solution
         """
-        P0, P1, P2, P3 = self.matrices
+        P0, P1, P2, P3, P4 = self.matrices
         num_heads = self.wn.num_junctions
+        num_signs = self.wn.num_pipes
         num_pipes = self.wn.num_pipes
-        num_vars = num_heads + num_pipes
-
+        num_vars = num_heads + 2 * num_pipes
+        original_parameters = deepcopy(parameters)
         if self.wn.options.hydraulic.headloss == "C-M":
-            p0 = P0[:num_vars].reshape(
-                -1,
-            )
-            p1 = P1[:num_vars, :num_vars]
-            params = np.array([0] * num_vars + parameters)
-            p2 = (params * P3).sum(-1)[:, :num_vars, :num_vars].sum(-1)[:num_vars]
+            p0 = P0[:-1].reshape(-1, 1)
+            p1 = P1[:-1, num_signs:num_vars] + P2.sum(1)[:-1, num_signs:num_vars]
+            p2 = P4.sum(1)[:-1, num_pipes:num_vars, num_pipes:num_vars].sum(-2)
+            parameters = np.array([0] * num_vars + parameters)
+            p2 = (parameters * p2).sum(-1)
 
         elif self.wn.options.hydraulic.headloss == "D-W":
-            p0 = P0[:num_vars].reshape(
-                -1,
+
+            # P0 matrix
+            p0 = np.copy(P0[:-1])
+            # add the k0 term without sgin  to p0
+            p0 += (
+                (parameters * P2[:-1, :num_signs, num_vars:])
+                .sum(-1)
+                .sum(-1)
+                .reshape(-1, 1)
             )
-            p0 += (parameters * P1[:num_vars, num_vars:]).sum(-1)
 
-            p1 = P1[:num_vars, :num_vars]
-            p1 += (parameters * P2[:num_vars, :num_vars, num_vars:]).sum(-1)
+            # P1 matrix
+            p1 = P1[:-1, num_pipes:num_vars] + P2.sum(1)[:-1, num_pipes:num_vars]
 
-            params = np.array([0] * num_vars + parameters)
-            p2 = (params * P3).sum(-1)[:, :num_vars, :num_vars].sum(-1)[:num_vars]
-            # print(p0, p1, p2)
+            # add the terms in k1
+            p1 += (
+                (parameters * P3[:-1, :num_signs, num_signs:num_vars, num_vars:])
+                .sum(1)
+                .sum(-1)
+            )
+
+            # P2 matrix
+            p2 = (
+                (
+                    parameters
+                    * P4[
+                        :-1,
+                        :num_signs,
+                        num_signs:num_vars,
+                        num_signs:num_vars,
+                        num_vars:,
+                    ]
+                )
+                .sum(1)
+                .sum(-1)
+                .sum(-1)
+            )
 
         def func(input):
-            return p0 + p1 @ input + (p2 @ (input * input))
+            input = input.reshape(-1, 1)
+            sign = np.sign(input)
+            sol = p0 + p1 @ input + (p2 @ (sign * input * input))
+            return sol.reshape(-1)
 
-        initial_point = np.random.rand(num_vars)
-        res = newton_raphson(func, initial_point)
-        assert np.allclose(func(res.solution), 0)
+        initial_point = np.random.rand(num_pipes + num_heads)
+        res = newton_raphson(func, initial_point, max_iter=max_iter, tol=tol)
+        sol = res.solution
+        converged = np.allclose(func(sol), 0)
+        if not converged:
+            print("Warning solution not converged")
+
+        # get the closest encoded solution and binary encoding
+        bin_rep_sol = []
+        for i in range(num_pipes):
+            bin_rep_sol.append(int(sol[i] > 0))
+
+        encoded_sol = np.zeros_like(sol)
+        for idx, s in enumerate(sol):
+            val, bin_rpr = self.mixed_solution_vector.encoded_reals[
+                idx + num_pipes
+            ].find_closest(np.abs(s))
+            bin_rep_sol.append(bin_rpr)
+            encoded_sol[idx] = np.sign(s) * val
+
+        # add the pipe parameter bnary variables
+        for p in original_parameters:
+            bin_rep_sol.append(p)
+
         if convert_to_si:
-            return self.convert_solution_to_si(res.solution)
-        return res.solution
+            sol = self.convert_solution_to_si(sol)
+            encoded_sol = self.convert_solution_to_si(encoded_sol)
+
+            # remove the height of the junctions
+            for i in range(self.wn.num_junctions):
+                sol[num_pipes + i] -= self.wn.nodes[
+                    self.wn.junction_name_list[i]
+                ].elevation
+                encoded_sol[num_pipes + i] -= self.wn.nodes[
+                    self.wn.junction_name_list[i]
+                ].elevation
+
+        return (sol, encoded_sol, bin_rep_sol, converged)
 
     def get_cost_matrix(self, matrices):
         """Add the equation that ar sued to maximize the pipe coefficiens and therefore minimize the diameter.
@@ -343,10 +465,10 @@ class QUBODesignPipeDiameter(object):
         Args:
             matrices (tuple): The matrices
         """
-        P0, P1, P2, P3 = matrices
+        P0, P1, P2, P3, P4 = matrices
 
         # loop over all the pipe coeffs
-        istart = self.sol_vect_flows.size + self.sol_vect_heads.size
+        istart = 2 * self.sol_vect_flows.size + self.sol_vect_heads.size
         index_over = self.wn.pipe_name_list
 
         # loop over all the pipe coeffs
@@ -356,33 +478,57 @@ class QUBODesignPipeDiameter(object):
                 self.model.pipe_coefficients_indices[link_name].value,
             ):
                 P1[-1, istart + pipe_idx] = self.weight_cost * pipe_cost
-        return P0, P1, P2, P3
+        return P0, P1, P2, P3, P4
 
     def initialize_matrices(self) -> Tuple:
-        """_summary_."""
+        """Creates the matrices of the polynomial system of equation.
+
+        math ::
+
+
+        """
         num_equations = len(list(self.model.cons())) + 1  # +1 for cost equation
-        num_continuous_variables = len(list(self.model.vars()))
-        num_variables = num_continuous_variables + self.num_hot_encoding
+        num_variables = (
+            2 * len(self.model.flow) + len(self.model.head) + self.num_hot_encoding
+        )
 
         # must transform that to coo
         P0 = np.zeros((num_equations, 1))
         P1 = np.zeros((num_equations, num_variables))
         P2 = np.zeros((num_equations, num_variables, num_variables))
         P3 = np.zeros((num_equations, num_variables, num_variables, num_variables))
-
-        matrices = (P0, P1, P2, P3)
-        (P0, P1, P2) = get_mass_balance_matrix(
-            self.model, self.wn, (P0, P1, P2), convert_to_us_unit=True
+        P4 = np.zeros(
+            (num_equations, num_variables, num_variables, num_variables, num_variables)
         )
+
+        # get the mass balance matrix
+        (P0, P1, P2, P3) = get_mass_balance_qubops_matrix(
+            self.model,
+            self.wn,
+            (P0, P1, P2, P3),
+            self.flow_index_mapping,
+            convert_to_us_unit=True,
+        )
+
+        # shortcut
+        matrices = (P0, P1, P2, P3, P4)
 
         # get the headloss matrix contributions
         if self.wn.options.hydraulic.headloss == "C-M":
-            matrices = get_pipe_design_chezy_manning_matrix(
-                self.model, self.wn, matrices
+            matrices = get_pipe_design_chezy_manning_qubops_matrix(
+                self.model,
+                self.wn,
+                matrices,
+                self.flow_index_mapping,
+                self.head_index_mapping,
             )
         elif self.wn.options.hydraulic.headloss == "D-W":
-            matrices = get_pipe_design_darcy_wesibach_matrix(
-                self.model, self.wn, matrices
+            matrices = get_pipe_design_darcy_wesibach_qubops_matrix(
+                self.model,
+                self.wn,
+                matrices,
+                self.flow_index_mapping,
+                self.head_index_mapping,
             )
         else:
             raise ValueError("Calculation only possible with C-M or D-W")
@@ -390,6 +536,21 @@ class QUBODesignPipeDiameter(object):
         matrices = self.get_cost_matrix(matrices)
 
         return matrices
+
+    @staticmethod
+    def combine_flow_values(solution: List) -> List:
+        """Combine the values of the flow sign*abs.
+
+        Args:
+            solution (List): solution vector
+
+        Returns:
+            List: solution vector
+        """
+        flow = []
+        for sign, abs in zip(solution[0], solution[1]):
+            flow.append(sign * abs)
+        return flow + solution[2]
 
     @staticmethod
     def flatten_solution_vector(solution: Tuple) -> List:
@@ -427,19 +588,25 @@ class QUBODesignPipeDiameter(object):
 
         return total_price, pipe_diameters
 
-    @staticmethod
-    def load_data_in_model(model: Model, data: np.ndarray):
+    def load_data_in_model(self, model: Model, data: np.ndarray):
         """Loads some data in the model.
+
+        Remark:
+            This routine replaces `load_var_values_from_x` without reordering the vector elements
 
         Args:
             model (Model): AML model from WNTR
             data (np.ndarray): data to load
         """
-        for iv, v in enumerate(model.vars()):
-            v.value = data[iv]
+        shift_head_idx = self.wn.num_links
+        for var in model.vars():
+            if var.name in self.flow_index_mapping:
+                idx = self.flow_index_mapping[var.name]["sign"]
+            elif var.name in self.head_index_mapping:
+                idx = self.head_index_mapping[var.name] - shift_head_idx
+            var.value = data[idx]
 
-    @staticmethod
-    def extract_data_from_model(model: Model) -> np.ndarray:
+    def extract_data_from_model(self, model: Model) -> np.ndarray:
         """Loads some data in the model.
 
         Args:
@@ -448,31 +615,68 @@ class QUBODesignPipeDiameter(object):
         Returns:
             np.ndarray: data extracted from model
         """
-        data = []
-        for v in model.vars():
-            data.append(v.value)
+        data = [None] * len(list(model.vars()))
+        shift_head_idx = self.wn.num_links
+        for var in model.vars():
+            if var.name in self.flow_index_mapping:
+                idx = self.flow_index_mapping[var.name]["sign"]
+            elif var.name in self.head_index_mapping:
+                idx = self.head_index_mapping[var.name] - shift_head_idx
+            data[idx] = var.value
         return data
 
-    def solve(  # noqa: D417
-        self, strength: float = 1e6, num_reads: int = 10000, **options
-    ) -> Tuple:
-        """Solves the Hydraulics equations.
+    def create_index_mapping(self) -> None:
+        """Creates the index maping for qubops matrices."""
+        # init the idx
+        idx = 0
 
-        Args:
-            strength (float, optional): substitution strength. Defaults to 1e6.
-            num_reads (int, optional): number of reads for the sampler. Defaults to 10000.
+        # number of variables that are flows
+        num_flow_var = len(self.model.flow)
+        num_head_var = len(self.model.head)
 
-        Returns:
-            Tuple: Succes message
-        """
-        self.qubo = QUBOPS_MIXED(self.mixed_solution_vector, **options)
-        matrices = tuple(sparse.COO(m) for m in self.matrices)
+        # get the indices for the sign/abs value of the flow
+        self.flow_index_mapping = OrderedDict()
+        for _, val in self.model.flow.items():
+            if val.name not in self.flow_index_mapping:
+                self.flow_index_mapping[val.name] = {
+                    "sign": None,
+                    "absolute_value": None,
+                }
+            self.flow_index_mapping[val.name]["sign"] = idx
+            self.flow_index_mapping[val.name]["absolute_value"] = idx + num_flow_var
+            idx += 1
 
-        # create the BQM
-        self.bqm = self.qubo.create_bqm(matrices, strength=strength)
+        # get the indices for the heads
+        idx = 0
+        self.head_index_mapping = OrderedDict()
+        for _, val in self.model.head.items():
+            self.head_index_mapping[val.name] = 2 * num_flow_var + idx
+            idx += 1
 
+        # get the indices for the pipe diameters
+        idx = 0
+        self.pipe_diameter_index_mapping = OrderedDict()
+        for _, val in self.model.flow.items():
+            if val.name not in self.pipe_diameter_index_mapping:
+                self.pipe_diameter_index_mapping[val.name] = OrderedDict()
+                for idiam in range(self.num_diameters):
+                    self.pipe_diameter_index_mapping[val.name][idiam] = (
+                        2 * num_flow_var + num_head_var + idx
+                    )
+                    idx += 1
+
+    def add_switch_constraints(
+        self,
+        strength: float = 1e6,
+    ):
+        """Add the conrains regarding the pipe diameter switch."""
         # add constraints on the hot encoding
-        istart = self.sol_vect_flows.size + self.sol_vect_heads.size
+        # the sum of each hot encoding variable of a given pipe must equals 1
+        istart = (
+            self.sol_vect_signs.size
+            + self.sol_vect_flows.size
+            + self.sol_vect_heads.size
+        )
         for i in range(self.sol_vect_flows.size):
 
             # create the expression [(x0, 1), (x1, 1), ...]
@@ -488,32 +692,87 @@ class QUBODesignPipeDiameter(object):
                     )
                 )
             # add the constraints
-            self.bqm.add_linear_equality_constraint(
+            self.qubo.qubo_dict.add_linear_equality_constraint(
                 expr, lagrange_multiplier=strength, constant=-1
             )
             istart += self.num_diameters
 
+    def add_pressure_equality_constraints(self, fractional_factor=100):
+        """Add the conrains regarding the presure."""
         # add constraint on head pressures
-        istart = self.sol_vect_flows.size
+        istart = 2 * self.sol_vect_flows.size
         for i in range(self.sol_vect_heads.size):
-
-            self.bqm.add_linear_inequality_constraint(
-                self.qubo.all_expr[istart + i],
-                lagrange_multiplier=1,
-                label="head_%s" % i,
-                lb=self.head_lower_bound,
-                ub=self.head_upper_bound,
+            tmp = []
+            for k, v in self.qubo.all_expr[istart + i]:
+                tmp.append((k, int(fractional_factor * v)))
+            # print(tmp)
+            cst = self.qubo.qubo_dict.add_linear_equality_constraint(
+                tmp,
+                lagrange_multiplier=self.weight_pressure,
+                constant=-self.target_pressure,
             )
+            # print(cst)
+
+    def add_pressure_constraints(self, fractional_factor=100):
+        """Add the conrains regarding the presure."""
+        # add constraint on head pressures
+        istart = 2 * self.sol_vect_flows.size
+        for i in range(self.sol_vect_heads.size):
+            tmp = []
+            for k, v in self.qubo.all_expr[istart + i]:
+                tmp.append((k, int(fractional_factor * v)))
+            # print(tmp)
+            cst = self.qubo.qubo_dict.add_linear_inequality_constraint(
+                tmp,
+                lagrange_multiplier=self.weight_pressure,
+                label="head_%s" % i,
+                lb=fractional_factor * self.head_lower_bound,
+                ub=fractional_factor * self.head_upper_bound,
+                penalization_method="slack",
+                cross_zero=True,
+            )
+            # print(cst)
+
+    def solve(  # noqa: D417
+        self, strength: float = 1e6, num_reads: int = 10000, **options
+    ) -> Tuple:
+        """Solves the Hydraulics equations.
+
+        Args:
+            strength (float, optional): substitution strength. Defaults to 1e6.
+            num_reads (int, optional): number of reads for the sampler. Defaults to 10000.
+
+        Returns:
+            Tuple: Success message
+        """
+        # create the index mapping of the variables
+        self.create_index_mapping()
+
+        # compute the polynomial matrices
+        self.matrices = self.initialize_matrices()
+
+        self.qubo = QUBOPS_MIXED(self.mixed_solution_vector, **options)
+        matrices = tuple(sparse.COO(m) for m in self.matrices)
+
+        # create the BQM
+        self.qubo.qubo_dict = self.qubo.create_bqm(matrices, strength=strength)
+
+        # add constraints for the switch
+        self.add_switch_constraints(strength=strength)
+
+        # add constrants for the pressure
+        self.add_pressure_constraints()
 
         # sample
-        sampleset = self.qubo.sample_bqm(self.bqm, num_reads=num_reads)
+        self.sampleset = self.qubo.sample_bqm(self.qubo.qubo_dict, num_reads=num_reads)
 
         # decode
-        sol = self.qubo.decode_solution(sampleset.lowest().record[0][0])
+        sol = self.qubo.decode_solution(self.sampleset.lowest().record[0][0])
 
         # flatten
         sol, hot_encoding = self.flatten_solution_vector(sol)
         print(sol)
+
         # convert back to SI
         sol = self.convert_solution_to_si(sol)
 

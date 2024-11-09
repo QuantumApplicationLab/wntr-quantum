@@ -12,22 +12,20 @@ from .models.darcy_weisbach import darcy_weisbach_constants
 from .models.darcy_weisbach import dw_resistance_param
 
 
-def create_hydraulic_model(wn):
+def create_hydraulic_model_for_qubo(wn):
     """Create the aml.
 
     Args:
-        wn (_type_): _description_
+        wn (wntr.WaterNetworkModel): The water network for which we want the aml model
 
     Raises:
-        NotImplementedError: _description_
-        NotImplementedError: _description_
-        ValueError: _description_
-        ValueError: _description_
-        NotImplementedError: _description_
-        NotImplementedError: _description_
+        ValueError: if pressure driven simulations is requested
+        ValueError: if H-W headloss approximation is requested
+        NotImplementedError: if PBV valves are part of the model
+        NotImplementedError: if GPV valves are part of the model
 
     Returns:
-        _type_: _description_
+        Tuple[wntr.aml.Model, wntr.models.utils.ModelUpdater]: The AML model and its updater
     """
     if wn.options.hydraulic.demand_model in ["PDD", "PDA"]:
         raise ValueError("Pressure Driven simulations not supported")

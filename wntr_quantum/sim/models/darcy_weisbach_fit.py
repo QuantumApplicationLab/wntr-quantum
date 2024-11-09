@@ -26,14 +26,17 @@ def friction_factor(q, e, s):  # noqa: D417
     return f
 
 
-def dw_fit(roughness, diameter, plot=False, convert_to_us_unit=False):
-    """_summary.
+def dw_fit(
+    roughness, diameter, plot=False, convert_to_us_unit=False, return_all_data=False
+):
+    """Fit the dw friction coefficient to a quadratic polynomial.
 
     Args:
         roughness (float): roughness pf the pipe in meter
         diameter (float): diamter of the pipe in meter
         plot(bool): plot the solution for visual inspection
         convert_to_us_unit(bool): convert to us unit
+        return_all_data (bool): return all data
     """
 
     def convert_to_USunit(roughness, diameter):
@@ -67,11 +70,13 @@ def dw_fit(roughness, diameter, plot=False, convert_to_us_unit=False):
         plt.show()
 
         print(res)
+    if return_all_data:
+        return np.array(res), np.poly1d(res)(1 / Q), factors, Q
+    else:
+        return np.array(res)
 
-    return np.array(res)
 
-
-def evlaluate_fit(coeffs, flow):
+def evaluate_fit(coeffs, flow):
     """Evaluate the fit.
 
     Args:
@@ -85,26 +90,39 @@ def evlaluate_fit(coeffs, flow):
 
 
 if __name__ == "__main__":
-    # res = dw_fit(
-    #     roughness=0.000164, diameter=0.820210, plot=True, convert_to_us_unit=False
-    # )
-    # print(evlaluate_fit(res, 1.766))
-    roughness = 0.164
-    DIAMS = np.linspace(1, 24, 25)
-    RES = []
+    # r = 0.000164
+    # d = 0.820210
+    # res = dw_fit(roughness=r, diameter=d, plot=True, convert_to_us_unit=False)
+
+    # print(evaluate_fit(res, 1.766))
+
+    # roughness = 0.005
+    roughness = 0.5 * 1e-3
+    ndiams = 5
+    DIAMS = np.arange(5, 20, 3) / 12
+
+    BASELINE = []
+    APPROX = []
     for d in DIAMS:
         print(d)
-        res = dw_fit(
+        res, approx, baseline, qval = dw_fit(
             roughness=roughness, diameter=d, plot=False, convert_to_us_unit=False
         )
-        RES.append(res)
-    RES = np.array(RES)
-    plt.plot(DIAMS, RES[:, 0])
-    plt.plot(DIAMS, RES[:, 1])
-    plt.plot(DIAMS, RES[:, 2])
-    plt.show()
+        BASELINE.append(baseline)
+        APPROX.append(approx)
 
-    plt.plot(DIAMS, RES[:, 0] / RES[:, 1])
-    plt.plot(DIAMS, RES[:, 1] / RES[:, 1])
-    plt.plot(DIAMS, RES[:, 2] / RES[:, 1])
+    n = 24
+
+    colors = plt.cm.tab20(np.linspace(0, 1, n))
+
+    i = 0
+    for bl, ap in zip(BASELINE, APPROX):
+        plt.loglog(qval, bl, "--", c=colors[i])
+        plt.loglog(qval, ap, "-", c=colors[i])
+        plt.grid(visible=True, which="both")
+        # plt.xlim(10, 1000)
+        plt.xlabel("Reynold Number")
+        plt.ylabel("Friction Factor")
+        # plt.yticks([0.01, 0.015, 0.02, 0.03, 0.04, 0.05, 0.06, 0.07, 0.08, 0.09, 0.1])
+        i += 1
     plt.show()
