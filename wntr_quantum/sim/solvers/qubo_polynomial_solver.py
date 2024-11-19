@@ -8,7 +8,6 @@ import sparse
 from dimod import SampleSet
 from dimod import Vartype
 from dimod import Sampler
-from dwave.samplers import SimulatedAnnealingSampler
 from quantum_newton_raphson.newton_raphson import newton_raphson
 from qubops.encodings import BaseQbitEncoding
 from qubops.encodings import PositiveQbitEncoding
@@ -22,6 +21,8 @@ from wntr.epanet.util import to_si
 from wntr.network import WaterNetworkModel
 from wntr.sim.aml import Model
 from wntr.sim.solvers import SolverStatus
+from ...sampler.simulated_annealing import SimulatedAnnealing
+from ...sampler.step.full_random import IncrementalStep
 from ..models.chezy_manning import get_chezy_manning_qubops_matrix
 from ..models.darcy_weisbach import get_darcy_weisbach_qubops_matrix
 from ..models.mass_balance import get_mass_balance_qubops_matrix
@@ -78,6 +79,9 @@ class QuboPolynomialSolver(object):
         self.flow_index_mapping = None
         self.head_index_mapping = None
 
+        # set up the sampler
+        self.sampler = SimulatedAnnealing()
+
     def verify_encoding(self):
         """Print info regarding the encodings."""
         hres = self.head_encoding.get_average_precision()
@@ -113,16 +117,23 @@ class QuboPolynomialSolver(object):
         sign = np.sign(input)
         return p0 + p1 @ input + (p2 @ (sign * input * input))
 
-    def classical_solution(self, max_iter: int = 100, tol: float = 1e-10) -> np.ndarray:
+    def classical_solution(
+        self, model=None, max_iter: int = 100, tol: float = 1e-10
+    ) -> np.ndarray:
         """Computes the solution using a classical Newton Raphson approach.
 
         Args:
+            model (model): the model
             max_iter (int, optional): number of iterations of the NR. Defaults to 100.
             tol (float, optional): Toleracne of the NR. Defaults to 1e-10.
 
         Returns:
             np.ndarray: _description_
         """
+        if self.matrices is None:
+            self.create_index_mapping(model)
+            self.matrices = self.initialize_matrices(model)
+
         P0, P1, P2, P3 = self.matrices
         num_heads = self.wn.num_junctions
         num_pipes = self.wn.num_pipes
@@ -442,7 +453,6 @@ class QuboPolynomialSolver(object):
         self,
         model: Model,
         strength: float = 1e6,
-        sampler: Sampler = SimulatedAnnealingSampler(),
         **sampler_options,
     ) -> Tuple:
         """Solves the Hydraulics equations.
@@ -463,7 +473,7 @@ class QuboPolynomialSolver(object):
 
         # solve using qubo poly
         sol = self.qubo_poly_solve(
-            strength=strength, sampler=sampler, **sampler_options
+            strength=strength, sampler=self.sampler, **sampler_options
         )
 
         # load data in the AML model
@@ -479,8 +489,7 @@ class QuboPolynomialSolver(object):
 
     def qubo_poly_solve(
         self,
-        strength=1e6,
-        sampler=SimulatedAnnealingSampler(),
+        strength=1e7,
         **sampler_options,
     ):  # noqa: D417
         """Solves the Hydraulics equations.
@@ -493,16 +502,14 @@ class QuboPolynomialSolver(object):
         Returns:
             np.ndarray: solution of the problem
         """
-        self.qubo = QUBOPS_MIXED(self.mixed_solution_vector, {"sampler": sampler})
+        self.qubo = QUBOPS_MIXED(self.mixed_solution_vector, {"sampler": self.sampler})
         matrices = tuple(sparse.COO(m) for m in self.matrices)
 
         # creates BQM
         self.qubo.qubo_dict = self.qubo.create_bqm(matrices, strength=strength)
 
         # sample
-        self.sampleset = self.qubo.sample_bqm(
-            self.qubo.qubo_dict, **sampler_options
-        )  # num_reads=num_reads, num_sweeps=num_sweeps)
+        self.sampleset = self.qubo.sample_bqm(self.qubo.qubo_dict, **sampler_options)
 
         # decode
         sol = self.qubo.decode_solution(self.sampleset.lowest().record[0][0])

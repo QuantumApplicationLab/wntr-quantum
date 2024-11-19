@@ -100,13 +100,38 @@ class SimulatedAnnealingResults:
 class SimulatedAnnealing:  # noqa: D101
 
     def __init__(self):  # noqa: D107
-        self.properties = {}
+        self.Tschedule = None
+        self.init_sample = None
+        self.take_step = None
+        self.save_taj = False
+
+    @property
+    def Tschedule(self):  # noqa: D102
+        return self._Tschedule
+
+    @Tschedule.setter
+    def Tschedule(self, tschedule):
+        self._Tschedule = tschedule
+
+    @property
+    def init_sample(self):  # noqa: D102
+        return self._init_sample
+
+    @init_sample.setter
+    def init_sample(self, sample):
+        self._init_sample = sample
+
+    @property
+    def take_step(self):  # noqa: D102
+        return self._take_step
+
+    @take_step.setter
+    def take_step(self, step):
+        self._take_step = step
 
     def sample(
         self,
         qubo,
-        num_sweeps=100,
-        Temp=[1e5, 1e-3],
         Tschedule=None,
         init_sample=None,
         take_step=None,
@@ -117,8 +142,6 @@ class SimulatedAnnealing:  # noqa: D101
 
         Args:
             qubo (qubo solver): qubo solver
-            num_sweeps (int, optional): _description_. Defaults to 100.
-            Temp (list, optional): _description_. Defaults to [1e5, 1e-3].
             Tschedule (list, optional): The temperature schedule
             init_sample (_type_, optional): _description_. Defaults to None.
             take_step (_type_, optional): _description_. Defaults to None.
@@ -142,28 +165,35 @@ class SimulatedAnnealing:  # noqa: D101
                 np.array(input)[qubo.index_variables].tolist()
             )
 
+        if Tschedule is not None:
+            self.Tschedule = Tschedule
+
+        if init_sample is not None:
+            self.init_sample = init_sample
+
+        if take_step is not None:
+            self.take_step = take_step
+
+        self.save_taj = save_traj
+
         self.bqm = qubo.qubo_dict
 
         # check that take_step is callable
-        if not callable(take_step):
+        if not callable(self.take_step):
             raise ValueError("take_step must be callable")
 
-        # define th variable names
+        # define the variable names
         self.var_names = sorted(self.bqm.variables)
 
         # define the initial state
-        if init_sample is None:
-            current_sample = np.random.randint(2, size=self.bqm.num_variables)
+        if self.init_sample is None:
+            current_sample = generate_random_valid_sample(self.bqm)
         else:
             current_sample = init_sample
 
-        # define the energy range
-        if Tschedule is None:
-            Tschedule = np.linspace(Temp[0], Temp[1], num_sweeps)
-
         # init the traj
         trajectory = []
-        if save_traj:
+        if self.save_traj:
             trajectory.append(current_sample)
 
         # initialize the energy
@@ -172,10 +202,10 @@ class SimulatedAnnealing:  # noqa: D101
         energies.append(e_current)
 
         # loop over the temp schedule
-        for T in tqdm(Tschedule):
+        for T in tqdm(self.Tschedule):
 
             # new point
-            new_sample = take_step(deepcopy(current_sample), verbose=verbose)
+            new_sample = self.take_step(deepcopy(current_sample), verbose=verbose)
             e_new = bqm_energy(qubo, new_sample, self.var_names)
 
             # accept/reject
@@ -201,7 +231,7 @@ class SimulatedAnnealing:  # noqa: D101
                         print("rejected")
                     pass
 
-            if save_traj:
+            if self.save_traj:
                 trajectory.append(current_sample)
             energies.append(e_current)
 

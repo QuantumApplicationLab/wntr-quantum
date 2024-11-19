@@ -697,17 +697,14 @@ class QUBODesignPipeDiameter(object):
             )
             istart += self.num_diameters
 
-    def add_pressure_equality_constraints(self, fractional_factor=100):
+    def add_pressure_equality_constraints(self):
         """Add the conrains regarding the presure."""
         # add constraint on head pressures
         istart = 2 * self.sol_vect_flows.size
         for i in range(self.sol_vect_heads.size):
-            tmp = []
-            for k, v in self.qubo.all_expr[istart + i]:
-                tmp.append((k, int(fractional_factor * v)))
             # print(tmp)
-            cst = self.qubo.qubo_dict.add_linear_equality_constraint(
-                tmp,
+            self.qubo.qubo_dict.add_linear_equality_constraint(
+                self.qubo.all_expr[istart + i],
                 lagrange_multiplier=self.weight_pressure,
                 constant=-self.target_pressure,
             )
