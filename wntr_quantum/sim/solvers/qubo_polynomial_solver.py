@@ -1,11 +1,8 @@
 from collections import OrderedDict
 from typing import List
 from typing import Tuple
-import matplotlib.pyplot as plt
 import numpy as np
 import sparse
-from dimod import SampleSet
-from dimod import Vartype
 from quantum_newton_raphson.newton_raphson import newton_raphson
 from qubops.encodings import BaseQbitEncoding
 from qubops.encodings import PositiveQbitEncoding
@@ -206,37 +203,6 @@ class QuboPolynomialSolver(object):
 
         return (sol, encoded_sol, bin_rep_sol, eref, converged)
 
-    @staticmethod
-    def plot_solution_vs_reference(
-        solution: np.ndarray, reference_solution: np.ndarray
-    ):
-        """Plots the scatter plot ref/sol.
-
-        Args:
-            solution (np.ndarray): _description_
-            reference_solution (np.ndarray): _description_
-        """
-        plt.scatter(reference_solution, solution)
-        plt.axline((0, 0.0), slope=1, color="black", linestyle=(0, (5, 5)))
-
-        plt.axline((0, 0.0), slope=1.05, color="grey", linestyle=(0, (2, 2)))
-        plt.axline((0, 0.0), slope=0.95, color="grey", linestyle=(0, (2, 2)))
-        plt.grid(which="major", lw=1)
-        plt.grid(which="minor", lw=0.1)
-        plt.loglog()
-
-    def decompose_solution(self, solution):
-        """Decompose solution into sign/abs flow and head values.
-
-        Args:
-            solution (np.array): solution
-        """
-        num_flows = self.wn.num_links
-        flow_values = solution[:num_flows]
-        head_values = solution[num_flows:]
-        tmp = np.append(np.sign(flow_values), np.abs(flow_values))
-        return np.append(tmp, head_values)
-
     def initialize_matrices(self, model: Model) -> Tuple:
         """Initialize the matrices of the non linear system.
 
@@ -425,13 +391,13 @@ class QuboPolynomialSolver(object):
         """Sample the qubo problem.
 
         Args:
-            init_sample (_type_): _description_
-            Tschedule (_type_): _description_
-            save_traj (bool, optional): _description_. Defaults to False.
-            verbose (bool, optional): _description_. Defaults to False.
+            init_sample (list): initial sample for the optimization
+            Tschedule (list): temperature schedule for the optimization
+            save_traj (bool, optional): save the trajectory. Defaults to False.
+            verbose (bool, optional): print status. Defaults to False.
 
         Returns:
-            Tuple: _description_
+            Tuple: Solver status, str, solution, SimulatedAnnealingResults
         """
         res = self.sampler.sample(
             self.qubo,
@@ -462,53 +428,3 @@ class QuboPolynomialSolver(object):
 
         # returns
         return (SolverStatus.converged, "Solved Successfully", sol, res)
-
-    def analyze_sampleset(self):
-        """Ananlyze the results contained in the sampleset."""
-        # run through all samples
-        solutions, energy, quadra_status = [], [], []
-        for x in self.sampleset.data():
-
-            # create a sample
-            y = SampleSet.from_samples(x.sample, Vartype.BINARY, x.energy)
-            var = y.variables
-            data = np.array(y.record[0][0])
-
-            # see if it respects quadratic condition
-            status = "True"
-            for v, d in zip(var, data):
-                if v not in self.qubo.mapped_variables:
-                    var_tmp = v.split("*")
-                    itmp = 0
-                    for vtmp in var_tmp:
-                        idx = self.qubo.index_variables[
-                            self.qubo.mapped_variables.index(vtmp)
-                        ]
-                        if itmp == 0:
-                            dcomposite = data[idx]
-                            itmp = 1
-                        else:
-                            dcomposite *= data[idx]
-                    if d != dcomposite:
-                        status = False
-                        break
-            quadra_status.append(status)
-
-            # solution
-            sol = self.qubo.decode_solution(data)
-
-            # combine the sign*abs values for the flow
-            sol = self.combine_flow_values(sol)
-
-            # convert back to SI
-            sol = self.convert_solution_to_si(sol)
-
-            # remove the height of the junction
-            for i in range(self.wn.num_junctions):
-                sol[self.wn.num_pipes + i] -= self.wn.nodes[
-                    self.wn.junction_name_list[i]
-                ].elevation
-
-            solutions.append(sol)
-            energy.append(x.energy)
-        return solutions, energy, quadra_status
