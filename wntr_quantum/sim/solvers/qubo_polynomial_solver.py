@@ -1,5 +1,4 @@
 from collections import OrderedDict
-from typing import Dict
 from typing import List
 from typing import Tuple
 import matplotlib.pyplot as plt
@@ -7,7 +6,6 @@ import numpy as np
 import sparse
 from dimod import SampleSet
 from dimod import Vartype
-from dimod import Sampler
 from quantum_newton_raphson.newton_raphson import newton_raphson
 from qubops.encodings import BaseQbitEncoding
 from qubops.encodings import PositiveQbitEncoding
@@ -23,6 +21,7 @@ from wntr.sim.aml import Model
 from wntr.sim.solvers import SolverStatus
 from ...sampler.simulated_annealing import SimulatedAnnealing
 from ...sampler.step.full_random import IncrementalStep
+from ...sim.qubo_hydraulics import create_hydraulic_model_for_qubo
 from ..models.chezy_manning import get_chezy_manning_qubops_matrix
 from ..models.darcy_weisbach import get_darcy_weisbach_qubops_matrix
 from ..models.mass_balance import get_mass_balance_qubops_matrix
@@ -41,7 +40,7 @@ class QuboPolynomialSolver(object):
 
         Args:
             wn (WaterNetworkModel): water network
-            flow_encoding (qubops.encodings.BaseQbitEncoding): binary encoding for the bsolute value of the flow
+            flow_encoding (qubops.encodings.BaseQbitEncoding): binary encoding for the absolute value of the flow
             head_encoding (qubops.encodings.BaseQbitEncoding): binary encoding for the head
         """
         self.wn = wn
@@ -73,14 +72,33 @@ class QuboPolynomialSolver(object):
             [self.sol_vect_signs, self.sol_vect_flows, self.sol_vect_heads]
         )
 
-        # init other attributes
-        self.matrices = None
-        self.qubo = None
-        self.flow_index_mapping = None
-        self.head_index_mapping = None
+        # create the hydraulics model
+        self.model, self.model_updater = create_hydraulic_model_for_qubo(wn)
 
         # set up the sampler
         self.sampler = SimulatedAnnealing()
+
+        # create the matrices
+        self.create_index_mapping(self.model)
+        self.matrices = self.initialize_matrices(self.model)
+        self.matrices = tuple(sparse.COO(m) for m in self.matrices)
+
+        # create the QUBO MIXED instance
+        self.qubo = QUBOPS_MIXED(self.mixed_solution_vector, {"sampler": self.sampler})
+
+        # create the qubo dictionary
+        self.qubo.qubo_dict = self.qubo.create_bqm(self.matrices, strength=0)
+
+        self.qubo.create_variables_mapping()
+        self.var_names = sorted(self.qubo.qubo_dict.variables)
+
+        # create the step function
+        self.step_func = IncrementalStep(
+            self.var_names,
+            self.qubo.mapped_variables,
+            self.qubo.index_variables,
+            step_size=10,
+        )
 
     def verify_encoding(self):
         """Print info regarding the encodings."""
@@ -117,9 +135,7 @@ class QuboPolynomialSolver(object):
         sign = np.sign(input)
         return p0 + p1 @ input + (p2 @ (sign * input * input))
 
-    def classical_solution(
-        self, model=None, max_iter: int = 100, tol: float = 1e-10
-    ) -> np.ndarray:
+    def classical_solution(self, max_iter: int = 100, tol: float = 1e-10) -> np.ndarray:
         """Computes the solution using a classical Newton Raphson approach.
 
         Args:
@@ -130,10 +146,6 @@ class QuboPolynomialSolver(object):
         Returns:
             np.ndarray: _description_
         """
-        if self.matrices is None:
-            self.create_index_mapping(model)
-            self.matrices = self.initialize_matrices(model)
-
         P0, P1, P2, P3 = self.matrices
         num_heads = self.wn.num_junctions
         num_pipes = self.wn.num_pipes
@@ -189,7 +201,10 @@ class QuboPolynomialSolver(object):
                 self.wn.junction_name_list[i]
             ].elevation
 
-        return (sol, encoded_sol, bin_rep_sol, converged)
+        # compute the qubo energy of the solution
+        eref = self.qubo.energy_binary_rep(bin_rep_sol)
+
+        return (sol, encoded_sol, bin_rep_sol, eref, converged)
 
     @staticmethod
     def plot_solution_vs_reference(
@@ -221,51 +236,6 @@ class QuboPolynomialSolver(object):
         head_values = solution[num_flows:]
         tmp = np.append(np.sign(flow_values), np.abs(flow_values))
         return np.append(tmp, head_values)
-
-    def diagnostic_solution(self, solution: np.ndarray, reference_solution: np.ndarray):
-        """Benchmark a solution against the exact reference solution.
-
-        Args:
-            solution (np.array): solution to be benchmarked
-            reference_solution (np.array): reference solution
-        """
-        reference_solution = self.convert_solution_from_si(reference_solution)
-        solution = self.convert_solution_from_si(solution)
-
-        reference_solution = self.decompose_solution(reference_solution)
-        solution = self.decompose_solution(solution)
-
-        data_ref, eref = self.qubo.compute_energy(reference_solution)
-        data_sol, esol = self.qubo.compute_energy(solution)
-
-        num_pipes = self.wn.num_links
-
-        np.set_printoptions(precision=3)
-        self.verify_encoding()
-        print("\n")
-        print("Error (%):", (1 - (solution / reference_solution)) * 100)
-        print("\n")
-        print("sol : ", solution)
-        print("ref : ", reference_solution)
-        print("diff: ", reference_solution - solution)
-        print("\n")
-        print("encoded_sol: ", np.array(data_sol[0]))
-        print("encoded_ref: ", np.array(data_ref[0]))
-        print("diff       : ", np.array(data_ref[0]) - np.array(data_sol[0]))
-        print("\n")
-        print("E sol   : ", esol)
-        print("E ref   : ", eref)
-        print("Delta E :", esol - eref)
-        print("\n")
-        res_sol = np.linalg.norm(
-            self.verify_solution(np.array(data_sol[0][num_pipes:]))
-        )
-        res_ref = np.linalg.norm(
-            self.verify_solution(np.array(data_ref[0][num_pipes:]))
-        )
-        print("Residue sol   : ", res_sol)
-        print("Residue ref   : ", res_ref)
-        print("Delta Residue :", res_sol - res_ref)
 
     def initialize_matrices(self, model: Model) -> Tuple:
         """Initialize the matrices of the non linear system.
@@ -450,74 +420,34 @@ class QuboPolynomialSolver(object):
             idx += 1
 
     def solve(  # noqa: D417
-        self,
-        model: Model,
-        strength: float = 1e6,
-        **sampler_options,
+        self, init_sample, Tschedule, save_traj=False, verbose=False
     ) -> Tuple:
-        """Solves the Hydraulics equations.
+        """Sample the qubo problem.
 
         Args:
-            model (Model): AML model
-            strength (float, optional): substitution strength. Defaults to 1e6.
-            num_reads (int, optional): number of reads for the sampler. Defaults to 10000.
+            init_sample (_type_): _description_
+            Tschedule (_type_): _description_
+            save_traj (bool, optional): _description_. Defaults to False.
+            verbose (bool, optional): _description_. Defaults to False.
 
         Returns:
-            Tuple: Succes message
+            Tuple: _description_
         """
-        # creates the index mapping for the variables in  the solution vectors
-        self.create_index_mapping(model)
-
-        # creates the matrices
-        self.matrices = self.initialize_matrices(model)
-
-        # solve using qubo poly
-        sol = self.qubo_poly_solve(
-            strength=strength, sampler=self.sampler, **sampler_options
+        res = self.sampler.sample(
+            self.qubo,
+            init_sample=init_sample,
+            Tschedule=Tschedule,
+            take_step=self.step_func,
+            save_traj=save_traj,
+            verbose=verbose,
         )
 
-        # load data in the AML model
-        model.set_structure()
-        self.load_data_in_model(model, sol)
-
-        # returns
-        return (
-            SolverStatus.converged,
-            "Solved Successfully",
-            0,
-        )
-
-    def qubo_poly_solve(
-        self,
-        strength=1e7,
-        **sampler_options,
-    ):  # noqa: D417
-        """Solves the Hydraulics equations.
-
-        Args:
-            strength (float, optional): substitution strength. Defaults to 1e6.
-            sampler (float, dwave.sampler):  sampler to optimize the qubo
-            **sampler_options (dict): options for the sampler
-
-        Returns:
-            np.ndarray: solution of the problem
-        """
-        self.qubo = QUBOPS_MIXED(self.mixed_solution_vector, {"sampler": self.sampler})
-        matrices = tuple(sparse.COO(m) for m in self.matrices)
-
-        # creates BQM
-        self.qubo.qubo_dict = self.qubo.create_bqm(matrices, strength=strength)
-
-        # sample
-        self.sampleset = self.qubo.sample_bqm(self.qubo.qubo_dict, **sampler_options)
-
-        # decode
-        sol = self.qubo.decode_solution(self.sampleset.lowest().record[0][0])
-
-        # combine the sign*abs values for the flow
+        # extact the solution and convert it
+        idx_min = np.array([e for e in res.energies]).argmin()
+        # idx_min = -1
+        sol = res.trajectory[idx_min]
+        sol = self.qubo.decode_solution(np.array(sol))
         sol = self.combine_flow_values(sol)
-
-        # convert back to SI
         sol = self.convert_solution_to_si(sol)
 
         # remove the height of the junction
@@ -526,11 +456,15 @@ class QuboPolynomialSolver(object):
                 self.wn.junction_name_list[i]
             ].elevation
 
-        return sol
+        # load data in the AML model
+        self.model.set_structure()
+        self.load_data_in_model(self.model, sol)
+
+        # returns
+        return (SolverStatus.converged, "Solved Successfully", sol, res)
 
     def analyze_sampleset(self):
         """Ananlyze the results contained in the sampleset."""
-
         # run through all samples
         solutions, energy, quadra_status = [], [], []
         for x in self.sampleset.data():

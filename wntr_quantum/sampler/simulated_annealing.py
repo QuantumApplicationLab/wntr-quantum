@@ -1,26 +1,25 @@
 from copy import deepcopy
 from dataclasses import dataclass
 import numpy as np
-from dimod import as_samples
 from tqdm import tqdm
 
 
-def generate_random_valid_sample(qubo):
-    """Geenrate a random sample that respects quadratization.
+def generate_random_valid_sample(net):
+    """Generate a random sample that respects quadratization.
 
     Args:
-        qubo (_type_): _description_
+        net (QuboPolynomialSolver): an instance of the QuboPolynomialSolver
     """
     sample = {}
-    for iv, v in enumerate(sorted(qubo.qubo_dict.variables)):
+    for iv, v in enumerate(sorted(net.qubo.qubo_dict.variables)):
         sample[v] = np.random.randint(2)
 
-    for v in qubo.mapped_variables[:7]:
+    for v in net.qubo.mapped_variables[:7]:
         sample[v] = 1
-    sample[qubo.mapped_variables[7]] = 0
+    sample[net.qubo.mapped_variables[7]] = 0
 
     for v, _ in sample.items():
-        if v not in qubo.mapped_variables:
+        if v not in net.qubo.mapped_variables:
             var_tmp = v.split("*")
             itmp = 0
             for vtmp in var_tmp:
@@ -38,7 +37,7 @@ def modify_solution_sample(net, solution, modify=["signs", "flows", "heads"]) ->
     """Modiy the solution sample to change values of the signs/flows/heads.
 
     Args:
-        net (qubo_solver): The QUBO solver
+        net (QuboPolynomialSolver): an instance of the QuboPolynomialSolver
         solution (list): the sample that encoded the true solution
         modify (list, optional): what to change. Defaults to ["signs", "flows", "heads"].
 
@@ -103,7 +102,7 @@ class SimulatedAnnealing:  # noqa: D101
         self.Tschedule = None
         self.init_sample = None
         self.take_step = None
-        self.save_taj = False
+        self.save_traj = False
 
     @property
     def Tschedule(self):  # noqa: D102
@@ -143,8 +142,8 @@ class SimulatedAnnealing:  # noqa: D101
         Args:
             qubo (qubo solver): qubo solver
             Tschedule (list, optional): The temperature schedule
-            init_sample (_type_, optional): _description_. Defaults to None.
-            take_step (_type_, optional): _description_. Defaults to None.
+            init_sample (list, optional): initial sample for the optimzation. Defaults to None.
+            take_step (callable, optional): Callable to obtain new sample. Defaults to None.
             save_traj (bool, optional): save the trajectory. Defaults to False
             verbose (bool, optional): print stuff
         """
@@ -174,7 +173,7 @@ class SimulatedAnnealing:  # noqa: D101
         if take_step is not None:
             self.take_step = take_step
 
-        self.save_taj = save_traj
+        self.save_traj = save_traj
 
         self.bqm = qubo.qubo_dict
 
