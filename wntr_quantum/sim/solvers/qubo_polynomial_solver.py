@@ -17,7 +17,7 @@ from wntr.network import WaterNetworkModel
 from wntr.sim.aml import Model
 from wntr.sim.solvers import SolverStatus
 from ...sampler.simulated_annealing import SimulatedAnnealing
-from ...sampler.step.full_random import IncrementalStep
+from ...sampler.step.random_step import IncrementalStep
 from ...sim.qubo_hydraulics import create_hydraulic_model_for_qubo
 from ..models.chezy_manning import get_chezy_manning_qubops_matrix
 from ..models.darcy_weisbach import get_darcy_weisbach_qubops_matrix

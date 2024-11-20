@@ -11,7 +11,7 @@ from wntr_quantum.sim.qubo_hydraulics import create_hydraulic_model_for_qubo
 from wntr_quantum.sampler.simulated_annealing import SimulatedAnnealing
 from qubops.qubops_mixed_vars import QUBOPS_MIXED
 import sparse
-from wntr_quantum.sampler.step.full_random import IncrementalStep
+from wntr_quantum.sampler.step.random_step import IncrementalStep
 from wntr_quantum.sampler.simulated_annealing import modify_solution_sample
 
 import pickle

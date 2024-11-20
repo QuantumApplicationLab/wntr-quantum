@@ -9,7 +9,7 @@ from qubops.qubops_mixed_vars import QUBOPS_MIXED
 from wntr_quantum.design.qubo_pipe_diam import QUBODesignPipeDiameter
 from wntr_quantum.sampler.simulated_annealing import SimulatedAnnealing
 from wntr_quantum.sampler.simulated_annealing import modify_solution_sample
-from wntr_quantum.sampler.step.full_random import SwitchIncrementalStep
+from wntr_quantum.sampler.step.random_step import SwitchIncrementalStep
 
 
 def plot_solutions(solutions, references):
