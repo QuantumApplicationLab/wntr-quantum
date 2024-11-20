@@ -19,6 +19,8 @@ from wntr.network import WaterNetworkModel
 from wntr.sim import aml
 from wntr.sim.aml import Model
 from wntr.sim.solvers import SolverStatus
+from ..sampler.simulated_annealing import SimulatedAnnealing
+from ..sampler.step.random_step import SwitchIncrementalStep
 from ..sim.models.chezy_manning import cm_resistance_value
 from ..sim.models.chezy_manning import get_pipe_design_chezy_manning_qubops_matrix
 from ..sim.models.darcy_weisbach import dw_resistance_value
@@ -112,10 +114,38 @@ class QUBODesignPipeDiameter(object):
         self.head_upper_bound = 1e3  # 10 * head_lower_bound  # is that enough ?
         self.target_pressure = head_lower_bound
 
-        # store other attributes
-        self.qubo = None
-        self.flow_index_mapping = None
-        self.head_index_mapping = None
+        # set up the sampler
+        self.sampler = SimulatedAnnealing()
+
+        # create the matrices
+        self.create_index_mapping()
+        self.matrices = self.initialize_matrices()
+        self.matrices = tuple(sparse.COO(m) for m in self.matrices)
+
+        # create the QUBO MIXED instance
+        self.qubo = QUBOPS_MIXED(self.mixed_solution_vector, {"sampler": self.sampler})
+
+        # create the qubo dictionary
+        self.qubo.qubo_dict = self.qubo.create_bqm(self.matrices, strength=0)
+
+        # add the constraints on the pipe diameter switch
+        # note that with our custom sampler and step this is not needed
+        # self.add_switch_constraints(strength=0)
+
+        # add constraints on the pressuyre values
+        self.add_pressure_equality_constraints()
+
+        self.var_names = sorted(self.qubo.qubo_dict.variables)
+        self.qubo.create_variables_mapping()
+
+        # create step function
+        self.step_func = SwitchIncrementalStep(
+            self.var_names,
+            self.qubo.mapped_variables,
+            self.qubo.index_variables,
+            step_size=10,
+            switch_variable_index=[[6, 7, 8], [9, 10, 11]],
+        )
 
     def get_dw_pipe_coefficients(self, link):
         """Get the pipe coefficients for a specific link with DW.
@@ -267,31 +297,6 @@ class QUBODesignPipeDiameter(object):
             % (-fvalues[-1], -fvalues[0], fvalues[0], fvalues[-1], fres)
         )
 
-    def verify_solution(self, input, params):
-        """Computes the rhs vector associate with the input.
-
-        Args:
-            input (np.ndarray): proposed solution vector
-            params (list): one-hot encoding vector to select the resistance factor.
-
-        Returns:
-            np.ndarray: RHS vector
-        """
-        P0, P1, P2, P3, P4 = self.matrices
-        num_heads = self.wn.num_junctions
-        num_signs = self.wn.num_pipes
-        num_pipes = self.wn.num_pipes
-        num_vars = num_heads + 2 * num_pipes
-
-        input = input.reshape(-1, 1)
-        p0 = P0[:-1].reshape(-1, 1)
-        p1 = P1[:-1, num_signs:num_vars] + P2.sum(1)[:-1, num_signs:num_vars]
-        p2 = P4.sum(1)[:-1, num_pipes:num_vars, num_pipes:num_vars].sum(-2)
-        parameters = np.array([0] * num_vars + params)
-        p2 = (parameters * p2).sum(-1)
-        sign = np.sign(input)
-        return p0 + p1 @ input + (p2 @ (sign * input * input))
-
     def enumerates_classical_solutions(self, convert_to_si=True):
         """Generates the classical solution."""
         encoding = []
@@ -306,10 +311,9 @@ class QUBODesignPipeDiameter(object):
             for p in params:
                 pvalues += p
             price, diameters = self.get_pipe_info_from_hot_encoding(pvalues)
-            sol, _, bin_rep_sol, _ = self.classical_solution(
+            sol, _, bin_rep_sol, energy, _ = self.classical_solution(
                 pvalues, convert_to_si=convert_to_si
             )
-            energy = self.qubo.energy_binary_rep(bin_rep_sol)
             print(price, diameters, sol, energy[0])
 
     def convert_solution_to_si(self, solution: np.ndarray) -> np.ndarray:
@@ -362,7 +366,12 @@ class QUBODesignPipeDiameter(object):
         Returns:
             np.mdarray : solution
         """
-        P0, P1, P2, P3, P4 = self.matrices
+        P0 = self.matrices[0].todense()
+        P1 = self.matrices[1].todense()
+        P2 = self.matrices[2].todense()
+        P3 = self.matrices[3].todense()
+        P4 = self.matrices[4].todense()
+
         num_heads = self.wn.num_junctions
         num_signs = self.wn.num_pipes
         num_pipes = self.wn.num_pipes
@@ -457,7 +466,10 @@ class QUBODesignPipeDiameter(object):
                     self.wn.junction_name_list[i]
                 ].elevation
 
-        return (sol, encoded_sol, bin_rep_sol, converged)
+        # compute the qubo energy of the solution
+        eref = self.qubo.energy_binary_rep(bin_rep_sol)
+
+        return (sol, encoded_sol, bin_rep_sol, eref, converged)
 
     def get_cost_matrix(self, matrices):
         """Add the equation that ar sued to maximize the pipe coefficiens and therefore minimize the diameter.

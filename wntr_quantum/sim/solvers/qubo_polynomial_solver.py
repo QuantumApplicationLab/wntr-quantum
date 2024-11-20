@@ -109,29 +109,6 @@ class QuboPolynomialSolver(object):
             % (-fvalues[-1], -fvalues[0], fvalues[0], fvalues[-1], fres)
         )
 
-    def verify_solution(self, input: np.ndarray) -> np.ndarray:
-        """Computes the rhs vector associate with the input.
-
-        Args:
-            input (np.ndarray): proposed solution
-
-        Returns:
-            np.ndarray: RHS vector
-        """
-        P0, P1, P2, P3 = self.matrices
-        num_pipes = self.wn.num_pipes
-
-        if self.wn.options.hydraulic.headloss == "C-M":
-            p0 = P0.reshape(
-                -1,
-            )
-            p1 = P1[:, num_pipes:] + P2.sum(1)[:, num_pipes:]
-            p2 = P3.sum(1)[:, num_pipes:, num_pipes:].sum(-1)
-        elif self.wn.options.hydraulic.headloss == "D-W":
-            raise NotImplementedError("verify_solution not implemented for DW")
-        sign = np.sign(input)
-        return p0 + p1 @ input + (p2 @ (sign * input * input))
-
     def classical_solution(self, max_iter: int = 100, tol: float = 1e-10) -> np.ndarray:
         """Computes the solution using a classical Newton Raphson approach.
 
