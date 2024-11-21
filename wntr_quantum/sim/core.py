@@ -6,7 +6,8 @@ from quantum_newton_raphson.splu_solver import SPLU_SOLVER
 from wntr.sim.core import WNTRSimulator
 from wntr.sim.core import _Diagnostics
 from wntr.sim.core import _ValveSourceChecker
-from .solvers.quantum_newton_solver import QuantumNewtonSolver
+from .results import QuantumSimulationResults
+from .solvers import QuantumNewtonSolver
 
 logger = logging.getLogger(__name__)
 
@@ -106,7 +107,7 @@ class QuantumWNTRSimulator(WNTRSimulator):
         self._register_controls_with_observers()
 
         node_res, link_res = wntr.sim.hydraulics.initialize_results_dict(self._wn)
-        results = wntr.sim.results.SimulationResults()
+        results = QuantumSimulationResults()
         results.error_code = None
         results.time = []
         results.network_name = self._wn.name
@@ -176,11 +177,11 @@ class QuantumWNTRSimulator(WNTRSimulator):
                 next_step="solve",
             )
 
-            solver_status, mesg, iter_count = _solver_helper(
+            solver_status, mesg, iter_count, linear_solver_results = _solver_helper(
                 self._model, self._solver, self._linear_solver, self._solver_options
             )
             if solver_status == 0 and self._backup_solver is not None:
-                solver_status, mesg, iter_count = _solver_helper(
+                solver_status, mesg, iter_count, linear_solver_results = _solver_helper(
                     self._model,
                     self._backup_solver,
                     self._linear_solver,
@@ -314,6 +315,8 @@ class QuantumWNTRSimulator(WNTRSimulator):
 
             if self._wn.sim_time > self._wn.options.time.duration:
                 break
+
+        results.linear_solver_results = linear_solver_results
 
         wntr.sim.hydraulics.get_results(self._wn, results, node_res, link_res)
 
