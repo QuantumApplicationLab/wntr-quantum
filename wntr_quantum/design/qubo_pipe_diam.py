@@ -747,7 +747,7 @@ class QUBODesignPipeDiameter(object):
             for k, v in self.qubo.all_expr[istart + i]:
                 tmp.append((k, int(fractional_factor * v)))
             # print(tmp)
-            cst = self.qubo.qubo_dict.add_linear_inequality_constraint(
+            _ = self.qubo.qubo_dict.add_linear_inequality_constraint(
                 tmp,
                 lagrange_multiplier=self.weight_pressure,
                 label="head_%s" % i,
