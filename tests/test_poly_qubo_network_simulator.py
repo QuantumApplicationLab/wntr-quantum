@@ -60,7 +60,8 @@ def run_FullQuboPolynomialSimulator():
         wn, flow_encoding=flow_encoding, head_encoding=head_encoding
     )
 
-    x0 = generate_random_valid_sample(sim)
+    x = generate_random_valid_sample(sim)
+    x0 = list(x.values())
 
     num_temp = 2000
     Tinit = 1e1
