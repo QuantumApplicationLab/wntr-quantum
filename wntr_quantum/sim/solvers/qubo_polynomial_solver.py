@@ -385,11 +385,13 @@ class QuboPolynomialSolver(object):
             verbose=verbose,
         )
 
-        # extact the solution and convert it
+        # extact the solution and decode it
         idx_min = np.array([e for e in res.energies]).argmin()
         # idx_min = -1
         sol = res.trajectory[idx_min]
         sol = self.qubo.decode_solution(np.array(sol))
+
+        # convert the solution to SI
         sol = self.combine_flow_values(sol)
         sol = self.convert_solution_to_si(sol)
 

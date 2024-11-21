@@ -110,6 +110,7 @@ class QUBODesignPipeDiameter(object):
         self.weight_pressure = weight_pressure
 
         # lower bound for the pressure
+        head_lower_bound = from_si(FlowUnits.CFS, head_lower_bound, HydParam.Length)
         self.head_lower_bound = head_lower_bound
         self.head_upper_bound = 1e3  # 10 * head_lower_bound  # is that enough ?
         self.target_pressure = head_lower_bound
@@ -138,13 +139,26 @@ class QUBODesignPipeDiameter(object):
         self.var_names = sorted(self.qubo.qubo_dict.variables)
         self.qubo.create_variables_mapping()
 
+        # compute the indices of the pipe diameter switch variables
+        self.switch_variables = self.get_switch_variables_index()
+
         # create step function
         self.step_func = SwitchIncrementalStep(
             self.var_names,
             self.qubo.mapped_variables,
             self.qubo.index_variables,
             step_size=10,
-            switch_variable_index=[[6, 7, 8], [9, 10, 11]],
+            switch_variable_index=self.switch_variables,
+        )
+
+    def get_switch_variables_index(self):
+        """Computes the indices of the switch variables, i.e. the pipe diameter switch."""
+        idx_init = self.wn.num_links * 2 + self.wn.num_junctions
+        idx_final = idx_init + self.num_diameters * self.wn.num_pipes
+        return (
+            np.arange(idx_init, idx_final)
+            .reshape(self.wn.num_pipes, self.num_diameters)
+            .tolist()
         )
 
     def get_dw_pipe_coefficients(self, link):
@@ -304,17 +318,19 @@ class QUBODesignPipeDiameter(object):
             tmp = [0] * self.num_diameters
             tmp[idiam] = 1
             encoding.append(tmp)
-
+        solutions = {}
         print("price \t diameters \t variables\t energy")
         for params in itertools.product(encoding, repeat=self.wn.num_pipes):
             pvalues = []
             for p in params:
                 pvalues += p
             price, diameters = self.get_pipe_info_from_hot_encoding(pvalues)
-            sol, _, bin_rep_sol, energy, _ = self.classical_solution(
+            sol, encoded_sol, bin_rep_sol, energy, cvg = self.classical_solution(
                 pvalues, convert_to_si=convert_to_si
             )
             print(price, diameters, sol, energy[0])
+            solutions[tuple(diameters)] = (sol, encoded_sol, bin_rep_sol, energy, cvg)
+        return solutions
 
     def convert_solution_to_si(self, solution: np.ndarray) -> np.ndarray:
         """Converts the solution to SI.
@@ -743,60 +759,62 @@ class QUBODesignPipeDiameter(object):
             # print(cst)
 
     def solve(  # noqa: D417
-        self, strength: float = 1e6, num_reads: int = 10000, **options
+        self, init_sample, Tschedule, save_traj=False, verbose=False
     ) -> Tuple:
-        """Solves the Hydraulics equations.
+        """Sample the qubo problem.
 
         Args:
-            strength (float, optional): substitution strength. Defaults to 1e6.
-            num_reads (int, optional): number of reads for the sampler. Defaults to 10000.
+            init_sample (list): initial sample for the optimization
+            Tschedule (list): temperature schedule for the optimization
+            save_traj (bool, optional): save the trajectory. Defaults to False.
+            verbose (bool, optional): print status. Defaults to False.
 
         Returns:
-            Tuple: Success message
+            Tuple: Solver status, str, solution, SimulatedAnnealingResults
         """
-        # create the index mapping of the variables
-        self.create_index_mapping()
+        res = self.sampler.sample(
+            self.qubo,
+            init_sample=init_sample,
+            Tschedule=Tschedule,
+            take_step=self.step_func,
+            save_traj=save_traj,
+            verbose=verbose,
+        )
 
-        # compute the polynomial matrices
-        self.matrices = self.initialize_matrices()
+        # extract and decode the solution
+        idx_min = np.array([e for e in res.energies]).argmin()
+        # idx_min = -1
+        sol = res.trajectory[idx_min]
+        sol = self.qubo.decode_solution(np.array(sol))
 
-        self.qubo = QUBOPS_MIXED(self.mixed_solution_vector, **options)
-        matrices = tuple(sparse.COO(m) for m in self.matrices)
+        # extract the hot encoding of the pipe
+        pipe_hot_encoding = sol[3]
 
-        # create the BQM
-        self.qubo.qubo_dict = self.qubo.create_bqm(matrices, strength=strength)
-
-        # add constraints for the switch
-        self.add_switch_constraints(strength=strength)
-
-        # add constrants for the pressure
-        self.add_pressure_constraints()
-
-        # sample
-        self.sampleset = self.qubo.sample_bqm(self.qubo.qubo_dict, num_reads=num_reads)
-
-        # decode
-        sol = self.qubo.decode_solution(self.sampleset.lowest().record[0][0])
-
-        # flatten
-        sol, hot_encoding = self.flatten_solution_vector(sol)
-        print(sol)
-
-        # convert back to SI
+        # convert the solution to SI
+        sol = self.combine_flow_values(sol)
         sol = self.convert_solution_to_si(sol)
+
+        # remove the height of the junction
+        for i in range(self.wn.num_junctions):
+            sol[self.wn.num_pipes + i] -= self.wn.nodes[
+                self.wn.junction_name_list[i]
+            ].elevation
 
         # load data in the AML model
         self.model.set_structure()
         self.load_data_in_model(self.model, sol)
 
         # get pipe info from one hot
-        self.total_pice, self.optimal_diameters = self.get_pipe_info_from_hot_encoding(
-            hot_encoding
+        self.total_price, self.optimal_diameters = self.get_pipe_info_from_hot_encoding(
+            pipe_hot_encoding
         )
 
         # returns
         return (
             SolverStatus.converged,
             "Solved Successfully",
-            0,
+            sol,
+            res,
+            self.total_price,
+            self.optimal_diameters,
         )
