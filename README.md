@@ -1,24 +1,9 @@
-<!-- ## Badges
-
-(Customize these badges with your own links, and check https://shields.io/ or https://badgen.net/ to see which other badges are available.)
-
-| fair-software.eu recommendations | |
-| :-- | :--  |
-| (1/5) code repository              | [![github repo badge](https://img.shields.io/badge/github-repo-000.svg?logo=github&labelColor=gray&color=blue)](https://github.com/QuantumApplicationLab/wntr-quantum) |
-| (2/5) license                      | [![github license badge](https://img.shields.io/github/license/QuantumApplicationLab/wntr-quantum)](https://github.com/QuantumApplicationLab/wntr-quantum) |
-| (3/5) community registry           | [![RSD](https://img.shields.io/badge/rsd-wntr_quantum-00a3e3.svg)](https://www.research-software.nl/software/wntr_quantum) [![workflow pypi badge](https://img.shields.io/pypi/v/wntr_quantum.svg?colorB=blue)](https://pypi.python.org/project/wntr_quantum/) |
-| (4/5) citation                     | [![DOI](https://zenodo.org/badge/DOI/<replace-with-created-DOI>.svg)](https://doi.org/<replace-with-created-DOI>) |
-| (5/5) checklist                    | [![workflow cii badge](https://bestpractices.coreinfrastructure.org/projects/<replace-with-created-project-identifier>/badge)](https://bestpractices.coreinfrastructure.org/projects/<replace-with-created-project-identifier>) |
-| howfairis                          | [![fair-software badge](https://img.shields.io/badge/fair--software.eu-%E2%97%8F%20%20%E2%97%8F%20%20%E2%97%8F%20%20%E2%97%8F%20%20%E2%97%8B-yellow)](https://fair-software.eu) |
-| **Other best practices**           | &nbsp; |
-| Static analysis                    | [![workflow scq badge](https://sonarcloud.io/api/project_badges/measure?project=QuantumApplicationLab_wntr-quantum&metric=alert_status)](https://sonarcloud.io/dashboard?id=QuantumApplicationLab_wntr-quantum) |
-| Coverage                           | [![workflow scc badge](https://sonarcloud.io/api/project_badges/measure?project=QuantumApplicationLab_wntr-quantum&metric=coverage)](https://sonarcloud.io/dashboard?id=QuantumApplicationLab_wntr-quantum) |
-| Documentation                      | [![Documentation Status](https://readthedocs.org/projects/wntr-quantum/badge/?version=latest)](https://wntr-quantum.readthedocs.io/en/latest/?badge=latest) |
-| **GitHub Actions**                 | &nbsp; |
-| Build                              | [![build](https://github.com/QuantumApplicationLab/wntr-quantum/actions/workflows/build.yml/badge.svg)](https://github.com/QuantumApplicationLab/wntr-quantum/actions/workflows/build.yml) |
-| Citation data consistency          | [![cffconvert](https://github.com/QuantumApplicationLab/wntr-quantum/actions/workflows/cffconvert.yml/badge.svg)](https://github.com/QuantumApplicationLab/wntr-quantum/actions/workflows/cffconvert.yml) |
-| SonarCloud                         | [![sonarcloud](https://github.com/QuantumApplicationLab/wntr-quantum/actions/workflows/sonarcloud.yml/badge.svg)](https://github.com/QuantumApplicationLab/wntr-quantum/actions/workflows/sonarcloud.yml) |
-| MarkDown link checker              | [![markdown-link-check](https://github.com/QuantumApplicationLab/wntr-quantum/actions/workflows/markdown-link-check.yml/badge.svg)](https://github.com/QuantumApplicationLab/wntr-quantum/actions/workflows/markdown-link-check.yml) | -->
+![Platform](https://img.shields.io/badge/platform-Linux-blue)
+[![Python](https://img.shields.io/badge/Python-3.8-informational)](https://www.python.org/)
+[![License](https://img.shields.io/github/license/quantumapplicationlab/wntr-quantum?label=License)](https://github.com/quantumapplicationlab/wntr-quantum/blob/main/LICENSE.txt)
+[![Code style: Black](https://img.shields.io/badge/Code%20style-Black-000.svg)](https://github.com/psf/black)
+[![Tests](https://github.com/quantumapplicationlab/wntr-quantum/actions/workflows/build.yml/badge.svg)](https://github.com/quantumapplicationlab/wntr-quantum/actions/workflows/build.yml)
+[![Coverage Status](https://coveralls.io/repos/github/QuantumApplicationLab/wntr-quantum/badge.svg?branch=main)](https://coveralls.io/github/QuantumApplicationLab/wntr-quantum?branch=main)
 
 ## WNTR Quantum
 
@@ -59,10 +44,42 @@ export EPANET_TMP=<path to tmp dir>/.epanet_quantum
 export EPANET_QUANTUM = <path to EPANET_QUANTUM>
 ```
 
-## Documentation
+## Example
 
-Include a link to your project's full documentation here.
+The example below shows how to use the Variational Quantum Linear Solver to solve the linear systems required in the Newton-Raphson-GGA algorithm.
 
+```python
+import wntr
+import wntr_quantum
+from qiskit.circuit.library import RealAmplitudes
+from qiskit.primitives import Estimator
+from qiskit_algorithms import optimizers as opt
+from quantum_newton_raphson.vqls_solver import VQLS_SOLVER
+
+# define the water network 
+inp_file = 'Net2Loops.inp'
+wn = wntr.network.WaterNetworkModel(inp_file)
+
+# define the vqls ansatz
+n_qubits = 3
+qc = RealAmplitudes(n_qubits, reps=3, entanglement="full")
+estimator = Estimator()
+
+# define the VQLS solver
+linear_solver = VQLS_SOLVER(
+    estimator=estimator,
+    ansatz=qc,
+    optimizer=[opt.COBYLA(maxiter=1000, disp=True), opt.CG(maxiter=500, disp=True)],
+    matrix_decomposition="symmetric",
+    verbose=True,
+    preconditioner="diagonal_scaling",
+    reorder=True,
+)
+
+# use wntr-quantum to solve the network
+sim = wntr_quantum.sim.QuantumEpanetSimulator(wn, linear_solver=linear_solver)
+results_vqls = sim.run_sim(linear_solver=linear_solver)
+```
 ## Contributing
 
 If you want to contribute to the development of wntr_quantum,
