@@ -5,9 +5,9 @@
 [![Tests](https://github.com/quantumapplicationlab/wntr-quantum/actions/workflows/build.yml/badge.svg)](https://github.com/quantumapplicationlab/wntr-quantum/actions/workflows/build.yml)
 [![Coverage Status](https://coveralls.io/repos/github/QuantumApplicationLab/wntr-quantum/badge.svg?branch=main)](https://coveralls.io/github/QuantumApplicationLab/wntr-quantum?branch=main)
 
-## WNTR Quantum
+![wntr_quantum](./docs/wntr_quantum_logo.png)
 
-WNTR Quantum, builds on the python package WNTR to create a quantum enabled water network management toolkit.
+WNTR Quantum, builds on the python package [WNTR](https://github.com/USEPA/WNTR) to create a quantum enabled water network management toolkit.
 
 
 ## Installation
