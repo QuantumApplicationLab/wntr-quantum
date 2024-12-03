@@ -7,7 +7,7 @@
 
 ## WNTR Quantum
 
-WNTR Quantum, builds on the python package WNTR to create a quantum enabled water nework management toolkit.
+WNTR Quantum, builds on the python package WNTR to create a quantum enabled water network management toolkit.
 
 
 ## Installation
