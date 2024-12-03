@@ -85,7 +85,9 @@ class QuantumWNTRSimulator(WNTRSimulator):
 
         logger.debug("creating hydraulic model")
         self.mode = self._wn.options.hydraulic.demand_model
-        self._model, self._model_updater = wntr.sim.hydraulics.create_hydraulic_model(wn=self._wn, HW_approx=HW_approx)
+        self._model, self._model_updater = wntr.sim.hydraulics.create_hydraulic_model(
+            wn=self._wn, HW_approx=HW_approx
+        )
 
         if diagnostics:
             diagnostics = _Diagnostics(self._wn, self._model, self.mode, enable=True)
@@ -130,9 +132,15 @@ class QuantumWNTRSimulator(WNTRSimulator):
         logger.debug("starting simulation")
 
         logger.info(
-            "{0:<10}{1:<10}{2:<10}{3:<15}{4:<15}".format("Sim Time", "Trial", "Solver", "# isolated", "# isolated")
+            "{0:<10}{1:<10}{2:<10}{3:<15}{4:<15}".format(
+                "Sim Time", "Trial", "Solver", "# isolated", "# isolated"
+            )
         )
-        logger.info("{0:<10}{1:<10}{2:<10}{3:<15}{4:<15}".format("", "", "# iter", "junctions", "links"))
+        logger.info(
+            "{0:<10}{1:<10}{2:<10}{3:<15}{4:<15}".format(
+                "", "", "# iter", "junctions", "links"
+            )
+        )
         while True:
             if logger.getEffectiveLevel() <= logging.DEBUG:
                 logger.debug("\n\n")
@@ -145,13 +153,18 @@ class QuantumWNTRSimulator(WNTRSimulator):
                     """
                     wntr.sim.hydraulics.update_tank_heads(self._wn)
                 trial = 0
-                self._compute_next_timestep_and_run_presolve_controls_and_rules(first_step)
+                self._compute_next_timestep_and_run_presolve_controls_and_rules(
+                    first_step
+                )
 
             self._run_feasibility_controls()
 
             # Prepare for solve
             self._update_internal_graph()
-            num_isolated_junctions, num_isolated_links = self._get_isolated_junctions_and_links()
+            (
+                num_isolated_junctions,
+                num_isolated_links,
+            ) = self._get_isolated_junctions_and_links()
             if not first_step and not resolve:
                 wntr.sim.hydraulics.update_tank_heads(self._wn)
             wntr.sim.hydraulics.update_model_for_controls(
@@ -160,28 +173,58 @@ class QuantumWNTRSimulator(WNTRSimulator):
             wntr.sim.models.param.source_head_param(self._model, self._wn)
             wntr.sim.models.param.expected_demand_param(self._model, self._wn)
 
-            diagnostics.run(last_step="presolve controls, rules, and model updates", next_step="solve")
+            diagnostics.run(
+                last_step="presolve controls, rules, and model updates",
+                next_step="solve",
+            )
 
             solver_status, mesg, iter_count, linear_solver_results = _solver_helper(
                 self._model, self._solver, self._linear_solver, self._solver_options
             )
             if solver_status == 0 and self._backup_solver is not None:
                 solver_status, mesg, iter_count, linear_solver_results = _solver_helper(
-                    self._model, self._backup_solver, self._linear_solver, self._backup_solver_options
+                    self._model,
+                    self._backup_solver,
+                    self._linear_solver,
+                    self._backup_solver_options,
                 )
             if solver_status == 0:
                 if self._convergence_error:
-                    logger.error("Simulation did not converge at time " + self._get_time() + ". " + mesg)
-                    raise RuntimeError("Simulation did not converge at time " + self._get_time() + ". " + mesg)
-                warnings.warn("Simulation did not converge at time " + self._get_time() + ". " + mesg)
-                logger.warning("Simulation did not converge at time " + self._get_time() + ". " + mesg)
+                    logger.error(
+                        "Simulation did not converge at time "
+                        + self._get_time()
+                        + ". "
+                        + mesg
+                    )
+                    raise RuntimeError(
+                        "Simulation did not converge at time "
+                        + self._get_time()
+                        + ". "
+                        + mesg
+                    )
+                warnings.warn(
+                    "Simulation did not converge at time "
+                    + self._get_time()
+                    + ". "
+                    + mesg
+                )
+                logger.warning(
+                    "Simulation did not converge at time "
+                    + self._get_time()
+                    + ". "
+                    + mesg
+                )
                 results.error_code = wntr.sim.results.ResultsStatus.error
                 diagnostics.run(last_step="solve", next_step="break")
                 break
 
             logger.info(
                 "{0:<10}{1:<10}{2:<10}{3:<15}{4:<15}".format(
-                    self._get_time(), trial, iter_count, num_isolated_junctions, num_isolated_links
+                    self._get_time(),
+                    trial,
+                    iter_count,
+                    num_isolated_junctions,
+                    num_isolated_links,
                 )
             )
 
@@ -189,7 +232,10 @@ class QuantumWNTRSimulator(WNTRSimulator):
             logger.debug("storing results in network")
             wntr.sim.hydraulics.store_results_in_network(self._wn, self._model)
 
-            diagnostics.run(last_step="solve and store results in network", next_step="postsolve controls")
+            diagnostics.run(
+                last_step="solve and store results in network",
+                next_step="postsolve controls",
+            )
 
             self._run_postsolve_controls()
             self._run_feasibility_controls()
@@ -199,34 +245,63 @@ class QuantumWNTRSimulator(WNTRSimulator):
                 wntr.sim.hydraulics.update_model_for_controls(
                     self._model, self._wn, self._model_updater, self._change_tracker
                 )
-                diagnostics.run(last_step="postsolve controls and model updates", next_step="solve next trial")
+                diagnostics.run(
+                    last_step="postsolve controls and model updates",
+                    next_step="solve next trial",
+                )
                 trial += 1
                 if trial > max_trials:
                     if convergence_error:
-                        logger.error("Exceeded maximum number of trials at time " + self._get_time() + ". ")
-                        raise RuntimeError("Exceeded maximum number of trials at time " + self._get_time() + ". ")
+                        logger.error(
+                            "Exceeded maximum number of trials at time "
+                            + self._get_time()
+                            + ". "
+                        )
+                        raise RuntimeError(
+                            "Exceeded maximum number of trials at time "
+                            + self._get_time()
+                            + ". "
+                        )
                     results.error_code = wntr.sim.results.ResultsStatus.error
-                    warnings.warn("Exceeded maximum number of trials at time " + self._get_time() + ". ")
-                    logger.warning("Exceeded maximum number of trials at time " + self._get_time() + ". ")
+                    warnings.warn(
+                        "Exceeded maximum number of trials at time "
+                        + self._get_time()
+                        + ". "
+                    )
+                    logger.warning(
+                        "Exceeded maximum number of trials at time "
+                        + self._get_time()
+                        + ". "
+                    )
                     break
                 continue
 
-            diagnostics.run(last_step="postsolve controls and model updates", next_step="advance time")
+            diagnostics.run(
+                last_step="postsolve controls and model updates",
+                next_step="advance time",
+            )
 
-            logger.debug("no changes made by postsolve controls; moving to next timestep")
+            logger.debug(
+                "no changes made by postsolve controls; moving to next timestep"
+            )
 
             resolve = False
             if isinstance(self._report_timestep, (float, int)):
                 if self._wn.sim_time % self._report_timestep == 0:
                     wntr.sim.hydraulics.save_results(self._wn, node_res, link_res)
-                    if len(results.time) > 0 and int(self._wn.sim_time) == results.time[-1]:
+                    if (
+                        len(results.time) > 0
+                        and int(self._wn.sim_time) == results.time[-1]
+                    ):
                         if int(self._wn.sim_time) != self._wn.sim_time:
                             raise RuntimeError(
                                 "Time steps increments smaller than 1 second are forbidden."
                                 + " Keep time steps as an integer number of seconds."
                             )
                         else:
-                            raise RuntimeError("Simulation already solved this timestep")
+                            raise RuntimeError(
+                                "Simulation already solved this timestep"
+                            )
                     results.time.append(int(self._wn.sim_time))
             elif self._report_timestep.upper() == "ALL":
                 wntr.sim.hydraulics.save_results(self._wn, node_res, link_res)

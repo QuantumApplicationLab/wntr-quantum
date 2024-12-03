@@ -12,7 +12,11 @@ import wntr_quantum
 def get_ape_from_pd_series(quantum_pd_series, classical_pd_series):
     """Helper function to evaluate absolute percentage error between classical and quantum results."""
     DELTA = 1.0e-12
-    ape = abs(quantum_pd_series - classical_pd_series) * 100.0 / abs(classical_pd_series + DELTA)
+    ape = (
+        abs(quantum_pd_series - classical_pd_series)
+        * 100.0
+        / abs(classical_pd_series + DELTA)
+    )
     return ape
 
 
@@ -25,10 +29,14 @@ def compare_results(classical_result, quantum_result):
 
     def check_ape(classical_value, quantum_value):
         """Checks if the absolute percentage error between classical and quantum results is within TOL."""
-        ape = abs(quantum_value - classical_value) * 100.0 / abs(classical_value + DELTA)
+        ape = (
+            abs(quantum_value - classical_value) * 100.0 / abs(classical_value + DELTA)
+        )
         is_close_to_classical = ape <= TOL
         if is_close_to_classical:
-            print(f"Quantum result {quantum_value} within {ape}% of classical result {classical_value}")
+            print(
+                f"Quantum result {quantum_value} within {ape}% of classical result {classical_value}"
+            )
             quantum_data.append(quantum_value)
             classical_data.append(classical_value)
         return is_close_to_classical
@@ -115,18 +123,18 @@ for file in inputs:
         wn,
         node_attribute=get_ape_from_pd_series(
             results_quantum.node["pressure"].iloc[0],
-            results_classical.node["pressure"].iloc[0]
+            results_classical.node["pressure"].iloc[0],
         ),
         link_attribute=get_ape_from_pd_series(
             results_quantum.link["flowrate"].iloc[0],
             results_classical.link["flowrate"].iloc[0],
         ),
-        node_colorbar_label='Pressures',
-        link_colorbar_label='Flows',
+        node_colorbar_label="Pressures",
+        link_colorbar_label="Flows",
         node_size=50,
         title=f"{model_name}: Absolute Percent Error",
         node_labels=False,
-        filename=f"{model_name}_wnm_qubo.png"
+        filename=f"{model_name}_wnm_qubo.png",
     )
 
     # checks if the quantum results are within 5% of the classical ones
@@ -134,14 +142,20 @@ for file in inputs:
 
     # plot all data
     plt.close()
-    plt.scatter(classical_data[:n_pipes], quantum_data[:n_pipes], label="Flowrates", color="blue", marker="o")
+    plt.scatter(
+        classical_data[:n_pipes],
+        quantum_data[:n_pipes],
+        label="Flowrates",
+        color="blue",
+        marker="o",
+    )
     plt.scatter(
         classical_data[n_pipes:],
         quantum_data[n_pipes:],
         label="Pressures",
         color="red",
         marker="s",
-        facecolors='none',
+        facecolors="none",
     )
     plt.axline((0, 0), slope=1, linestyle="--", color="gray", label="")
     plt.xlabel("Classical EPANET results")
