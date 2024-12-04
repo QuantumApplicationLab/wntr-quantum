@@ -18,6 +18,12 @@ jobs:
         uses: actions/setup-python@v4
         with:
           python-version: '3.9'
+      - name: Install EPANET quantum and set environment variables
+        run: |
+          git clone https://github.com/QuantumApplicationLab/EPANET
+          echo "EPANET_TMP=$RUNNER_TEMP" >> $GITHUB_ENV
+          echo "EPANET_QUANTUM=${{ github.workspace }}/EPANET" >> $GITHUB_ENV
+          echo "$GITHUB_ENV"
       - name: Install tox
         run: |
           python -m pip install --upgrade pip
