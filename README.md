@@ -7,7 +7,20 @@
 
 ![wntr_quantum](./docs/wntr_quantum_logo.png)
 
-WNTR Quantum, builds on the python package [WNTR](https://github.com/USEPA/WNTR) to create a quantum enabled water network management toolkit.
+
+`wntr_quantum` builds on the python package [WNTR](https://github.com/USEPA/WNTR) to leverage quantum computing for the simulation and optimization of water networks. The main capablities of the software are:
+
+### 1. Quantum Enhanced Newton-Raphson Algorithm
+The [`QuantumEpanetSimulator`](https://github.com/QuantumApplicationLab/wntr-quantum/blob/01cd077bc6726660ff6323329169e807951db9c1/wntr_quantum/sim/epanet.py#L75C7-L75C29) of `wntr_quantum` use quantum solvers to solve the linear systems required as part of the Newon-Raphson GGA algorithm. Several quantum linear solvers are available:
+- Harrow–Hassidim–Lloyd ([HHL](https://github.com/QuantumApplicationLab/wntr-quantum/blob/main/docs/notebooks/linear_solver/hhl_solver.ipynb)) : Gate based quantum solution. See example for [Net0](https://github.com/QuantumApplicationLab/wntr-quantum/blob/main/docs/notebooks/newton_raphson_Net0/qnr_hhl.ipynb)
+- Variational Quantum Linear Solver ([VQLS](https://github.com/QuantumApplicationLab/wntr-quantum/blob/main/docs/notebooks/linear_solver/vqls_solver.ipynb)) : hybrid quantum-classical gate based solution. See example for [Net0](https://github.com/QuantumApplicationLab/wntr-quantum/blob/main/docs/notebooks/newton_raphson_Net0/qnr_vqls.ipynb) and on [Net2loops](https://github.com/QuantumApplicationLab/wntr-quantum/blob/main/docs/notebooks/newton_raphson_Net2Loops/qnr_vqls.ipynb)
+ - QUBO Linear Solver ([QUBOLS](https://github.com/QuantumApplicationLab/wntr-quantum/blob/main/docs/notebooks/linear_solver/qubols_solver.ipynb)) : Quantum Annealing solution. See example for [Net0](https://github.com/QuantumApplicationLab/wntr-quantum/blob/main/docs/notebooks/newton_raphson_Net0/qnr_qubols.ipynb) and on [Net2loops](https://github.com/QuantumApplicationLab/wntr-quantum/blob/main/docs/notebooks/newton_raphson_Net2Loops/qnr_qubols.ipynb)
+
+### 2. Quantum Hydraulics Simulations
+The [`FullQuboPolynomialSimulator`](https://github.com/QuantumApplicationLab/wntr-quantum/blob/0ca53baa9d3a0b4ccb27d5232a32c5f8161e15b6/wntr_quantum/sim/core_qubo.py#L14C7-L14C34) recast the hydraulics equation as a Quadratic Unconstrained Binary Optimization (QUBO) problem, that can be solved using quantum annealers. 
+
+### 3. Quantum Optimization of Water Networks
+The [`QUBODesignPipeDiameter`](https://github.com/QuantumApplicationLab/wntr-quantum/blob/0ca53baa9d3a0b4ccb27d5232a32c5f8161e15b6/wntr_quantum/design/qubo_pipe_diam.py#L32C7-L32C29) recast the hydraulics equation and the pipe-diameter optimization as a Quadratic Unconstrained Binary Optimization problem, that can be solved using quantum annealers.  
 
 
 ## Installation
@@ -43,7 +56,6 @@ cp lib/libepanet2.so <path to wntr-quantum>/wntr-quantum/wntr_quantum/epanet/Lin
 export EPANET_TMP=<path to tmp dir>/.epanet_quantum 
 export EPANET_QUANTUM = <path to EPANET_QUANTUM>
 ```
-
 ## Example
 
 The example below shows how to use the Variational Quantum Linear Solver to solve the linear systems required in the Newton-Raphson-GGA algorithm.
