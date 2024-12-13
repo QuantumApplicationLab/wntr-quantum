@@ -39,16 +39,16 @@ version = "0.1.0"
 
 [project.optional-dependencies]
 dev = [
-    "build",            # build is not only used in publishing (below), but also in the template's test suite
+    "build",           # build is not only used in publishing (below), but also in the template's test suite
     "bump-my-version",
-    "coverage [toml]",
+    # "coverage [toml]",
     "pytest",
-    "pytest-cov",
+    # "pytest-cov",
     "ruff",
     "sphinx",
     "sphinx_rtd_theme",
     "sphinx-autoapi",
-    "tox",
+    # "tox",
     "myst_parser",
 ]
 publishing = ["build", "twine", "wheel"]
