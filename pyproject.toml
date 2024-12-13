@@ -15,12 +15,7 @@ classifiers = [
     "Intended Audience :: Science/Research",
     "License :: OSI Approved :: Apache Software License",
     "Natural Language :: English",
-    "Programming Language :: Python :: 3",
-    "Programming Language :: Python :: 3.8",
     "Programming Language :: Python :: 3.9",
-    "Programming Language :: Python :: 3.10",
-    "Programming Language :: Python :: 3.11",
-    "Programming Language :: Python :: 3.12",
 ]
 dependencies = [
     "numpy",
@@ -39,16 +34,13 @@ version = "0.1.0"
 
 [project.optional-dependencies]
 dev = [
-    "build",           # build is not only used in publishing (below), but also in the template's test suite
+    "build",            # build is not only used in publishing (below), but also in the template's test suite
     "bump-my-version",
-    # "coverage [toml]",
     "pytest",
-    # "pytest-cov",
     "ruff",
     "sphinx",
     "sphinx_rtd_theme",
     "sphinx-autoapi",
-    # "tox",
     "myst_parser",
 ]
 publishing = ["build", "twine", "wheel"]
