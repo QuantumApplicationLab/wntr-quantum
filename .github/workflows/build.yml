@@ -34,7 +34,7 @@ jobs:
           git config --global url."https://${{ secrets.ACCESS_TOKEN }}@github".insteadOf https://github
           python -m pip install --upgrade pip setuptools
           python -m pip install .[dev,publishing]
-          pip install coveragepy-lcov coverage
+          pip install coveragepy-lcov 'coverage<7' 
       - name: Install EPANET quantum and set environment variables
         run: |
           git clone https://github.com/QuantumApplicationLab/EPANET
@@ -66,10 +66,10 @@ jobs:
       fail-fast: false
     steps:
       - uses: actions/checkout@v4
-      - name: Set up Python 3.11
+      - name: Set up Python 3.9
         uses: actions/setup-python@v5
         with:
-          python-version: 3.11
+          python-version: 3.9
       - name: Python info
         shell: bash -e {0}
         run: |
