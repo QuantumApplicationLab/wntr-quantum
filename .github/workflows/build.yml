@@ -34,7 +34,7 @@ jobs:
           git config --global url."https://${{ secrets.ACCESS_TOKEN }}@github".insteadOf https://github
           python -m pip install --upgrade pip setuptools
           python -m pip install .[dev,publishing]
-          pip install tox coveragepy-lcov 'coverage<7'
+          pip install coveragepy-lcov coverage
       - name: Install EPANET quantum and set environment variables
         run: |
           git clone https://github.com/QuantumApplicationLab/EPANET
