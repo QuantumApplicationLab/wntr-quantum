@@ -363,32 +363,59 @@ class QuboPolynomialSolver(object):
             idx += 1
 
     def solve(  # noqa: D417
-        self, init_sample, Tschedule, save_traj=False, verbose=False
+        self,
+        init_sample,
+        Tschedule,
+        optimize_values=None,
+        save_traj=False,
+        verbose=False,
     ) -> Tuple:
         """Sample the qubo problem.
 
         Args:
             init_sample (list): initial sample for the optimization
             Tschedule (list): temperature schedule for the optimization
+            optimize_values (None, list): a list of variables to optimize (default to None-> all variables)
             save_traj (bool, optional): save the trajectory. Defaults to False.
             verbose (bool, optional): print status. Defaults to False.
 
         Returns:
             Tuple: Solver status, str, solution, SimulatedAnnealingResults
         """
-        res = self.sampler.sample(
-            self.qubo,
-            init_sample=init_sample,
-            Tschedule=Tschedule,
-            take_step=self.step_func,
-            save_traj=save_traj,
-            verbose=verbose,
-        )
+        if optimize_values is None:
+            res = self.sampler.sample(
+                self.qubo,
+                init_sample=init_sample,
+                Tschedule=Tschedule,
+                take_step=self.step_func,
+                save_traj=save_traj,
+                verbose=verbose,
+            )
 
-        # extact the solution and decode it
-        idx_min = np.array([e for e in res.energies]).argmin()
-        # idx_min = -1
-        sol = res.trajectory[idx_min]
+            # extact the solution
+            idx_min = np.array([e for e in res.energies]).argmin()
+            sol = res.trajectory[idx_min]
+
+        else:
+            res = []
+            for opt_vals in optimize_values:
+                self.step_func.optimize_values = opt_vals
+                iter_res = self.sampler.sample(
+                    self.qubo,
+                    init_sample=init_sample,
+                    Tschedule=Tschedule,
+                    take_step=self.step_func,
+                    save_traj=save_traj,
+                    verbose=verbose,
+                )
+                res.append(iter_res)
+                init_sample = iter_res.res
+
+            # extact the solution a
+            idx_min = np.array([e for e in res[-1].energies]).argmin()
+            sol = res[-1].trajectory[idx_min]
+
+        # decode the solution
         sol = self.qubo.decode_solution(np.array(sol))
 
         # convert the solution to SI
