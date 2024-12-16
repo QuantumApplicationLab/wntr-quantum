@@ -17,10 +17,11 @@ The [`QuantumEpanetSimulator`](https://github.com/QuantumApplicationLab/wntr-qua
  - QUBO Linear Solver ([QUBOLS](https://github.com/QuantumApplicationLab/wntr-quantum/blob/main/docs/notebooks/linear_solver/qubols_solver.ipynb)) : Quantum Annealing solution. See example for [Net0](https://github.com/QuantumApplicationLab/wntr-quantum/blob/main/docs/notebooks/newton_raphson_Net0/qnr_qubols.ipynb) and on [Net2loops](https://github.com/QuantumApplicationLab/wntr-quantum/blob/main/docs/notebooks/newton_raphson_Net2Loops/qnr_qubols.ipynb)
 
 ### 2. Quantum Hydraulics Simulations
-The [`FullQuboPolynomialSimulator`](https://github.com/QuantumApplicationLab/wntr-quantum/blob/0ca53baa9d3a0b4ccb27d5232a32c5f8161e15b6/wntr_quantum/sim/core_qubo.py#L14C7-L14C34) recast the hydraulics equation as a Quadratic Unconstrained Binary Optimization (QUBO) problem, that can be solved using quantum annealers. 
+The [`FullQuboPolynomialSimulator`](https://github.com/QuantumApplicationLab/wntr-quantum/blob/3da7780938818601971ca8f38e4443e9aa3bbaf0/wntr_quantum/sim/core_qubo.py#L14)
+recast the hydraulics equation as a Quadratic Unconstrained Binary Optimization (QUBO) problem, that can be solved using quantum annealers. An example of use on `Net0`can be found [here](https://github.com/QuantumApplicationLab/wntr-quantum/blob/main/docs/notebooks/qubo_polynomial_solver/Net0.ipynb)
 
 ### 3. Quantum Optimization of Water Networks
-The [`QUBODesignPipeDiameter`](https://github.com/QuantumApplicationLab/wntr-quantum/blob/0ca53baa9d3a0b4ccb27d5232a32c5f8161e15b6/wntr_quantum/design/qubo_pipe_diam.py#L32C7-L32C29) recast the hydraulics equation and the pipe-diameter optimization as a Quadratic Unconstrained Binary Optimization problem, that can be solved using quantum annealers.  
+The [`QUBODesignPipeDiameter`](https://github.com/QuantumApplicationLab/wntr-quantum/blob/3da7780938818601971ca8f38e4443e9aa3bbaf0/wntr_quantum/design/qubo_pipe_diam.py#L32) recast the hydraulics equation and the pipe-diameter optimization as a Quadratic Unconstrained Binary Optimization problem, that can be solved using quantum annealers. An example of use on `Net0`can be found [here](https://github.com/QuantumApplicationLab/wntr-quantum/blob/main/docs/notebooks/pipe_diameter_optimization/design_pipe_diameter.ipynb)
 
 
 ## Installation
