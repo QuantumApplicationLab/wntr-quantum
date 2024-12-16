@@ -2,20 +2,19 @@ import logging
 import warnings
 import wntr.sim.hydraulics
 import wntr.sim.results
-from quantum_newton_raphson.splu_solver import SPLU_SOLVER
 from wntr.sim.core import WNTRSimulator
 from wntr.sim.core import _Diagnostics
 from wntr.sim.core import _ValveSourceChecker
-from .results import QuantumSimulationResults
-from .solvers import QuantumNewtonSolver
+from .qubo_hydraulics import create_hydraulic_model_for_qubo
+from .solvers.qubo_polynomial_solver import QuboPolynomialSolver
 
 logger = logging.getLogger(__name__)
 
 
-class QuantumWNTRSimulator(WNTRSimulator):
+class FullQuboPolynomialSimulator(WNTRSimulator):
     """The quantum enabled NR slver."""
 
-    def __init__(self, wn, linear_solver=SPLU_SOLVER()):  # noqa: D417
+    def __init__(self, wn, flow_encoding, head_encoding):  # noqa: D417
         """WNTR simulator class.
         The WNTR simulator uses a custom newton solver and linear solvers from scipy.sparse.
 
@@ -23,7 +22,8 @@ class QuantumWNTRSimulator(WNTRSimulator):
         ----------
         wn : WaterNetworkModel object
             Water network model
-        linear_solver: The linear solver used for the NR step
+        flow_encoding: binary encoding for the flow values
+        head_encoding: binary ncoding for the head values
 
 
         .. note::
@@ -31,18 +31,17 @@ class QuantumWNTRSimulator(WNTRSimulator):
 
         """  # noqa: D205
         super().__init__(wn)
-        self._linear_solver = linear_solver
-        self._solver = QuantumNewtonSolver(linear_solver=linear_solver)
+        self._head_encoding = head_encoding
+        self._flow_encoding = flow_encoding
+        self._solver = QuboPolynomialSolver(
+            self._wn, flow_encoding=flow_encoding, head_encoding=head_encoding
+        )
 
     def run_sim(
         self,
-        solver=QuantumNewtonSolver,
-        linear_solver=SPLU_SOLVER(),
-        backup_solver=None,
+        solver=QuboPolynomialSolver,
         solver_options=None,
-        backup_solver_options=None,
         convergence_error=False,
-        HW_approx="default",
         diagnostics=False,
     ):
         """Run an extended period simulation (hydraulics only).
@@ -53,13 +52,8 @@ class QuantumWNTRSimulator(WNTRSimulator):
             wntr.sim.solvers.NewtonSolver or Scipy solver
         linear_solver: linear solver
             Linear solver
-        backup_solver: object
-            wntr.sim.solvers.NewtonSolver or Scipy solver
         solver_options: dict
             Solver options are specified using the following dictionary keys:
-        backup_solver_options: dict
-            Solver options are specified using the following dictionary keys:
-
             * MAXITER: the maximum number of iterations for each hydraulic solve
                 (each timestep and trial) (default = 3000)
             * TOL: tolerance for the hydraulic equations (default = 1e-6)
@@ -69,25 +63,17 @@ class QuantumWNTRSimulator(WNTRSimulator):
             * BACKTRACKING: whether or not to use a line search (default = True)
             * BT_START_ITER: the newton iteration at which a line search should start being used (default = 2)
             * THREADS: the number of threads to use in constraint and jacobian computations
-        backup_solver_options: dict
         convergence_error: bool (optional)
             If convergence_error is True, an error will be raised if the
             simulation does not converge. If convergence_error is False, partial results are returned,
             a warning will be issued, and results.error_code will be set to 0
             if the simulation does not converge.  Default = False.
-        HW_approx: str
-            Specifies which Hazen-Williams headloss approximation to use. Options are 'default' and 'piecewise'. Please
-            see the WNTR documentation on hydraulics for details.
         diagnostics: bool
             If True, then run with diagnostics on
         """
-        self._linear_solver = linear_solver
-
         logger.debug("creating hydraulic model")
         self.mode = self._wn.options.hydraulic.demand_model
-        self._model, self._model_updater = wntr.sim.hydraulics.create_hydraulic_model(
-            wn=self._wn, HW_approx=HW_approx
-        )
+        self._model, self._model_updater = create_hydraulic_model_for_qubo(wn=self._wn)
 
         if diagnostics:
             diagnostics = _Diagnostics(self._wn, self._model, self.mode, enable=True)
@@ -96,9 +82,9 @@ class QuantumWNTRSimulator(WNTRSimulator):
 
         self._setup_sim_options(
             solver=solver,
-            backup_solver=backup_solver,
+            backup_solver=None,
             solver_options=solver_options,
-            backup_solver_options=backup_solver_options,
+            backup_solver_options=None,
             convergence_error=convergence_error,
         )
 
@@ -107,7 +93,7 @@ class QuantumWNTRSimulator(WNTRSimulator):
         self._register_controls_with_observers()
 
         node_res, link_res = wntr.sim.hydraulics.initialize_results_dict(self._wn)
-        results = QuantumSimulationResults()
+        results = wntr.sim.results.SimulationResults()
         results.error_code = None
         results.time = []
         results.network_name = self._wn.name
@@ -177,16 +163,15 @@ class QuantumWNTRSimulator(WNTRSimulator):
                 next_step="solve",
             )
 
-            solver_status, mesg, iter_count, linear_solver_results = _solver_helper(
-                self._model, self._solver, self._linear_solver, self._solver_options
+            solver_status, mesg, iter_count = _solver_helper(
+                self._model,
+                self._solver,
+                self._wn,
+                self._flow_encoding,
+                self._head_encoding,
+                self._solver_options,
             )
-            if solver_status == 0 and self._backup_solver is not None:
-                solver_status, mesg, iter_count, linear_solver_results = _solver_helper(
-                    self._model,
-                    self._backup_solver,
-                    self._linear_solver,
-                    self._backup_solver_options,
-                )
+
             if solver_status == 0:
                 if self._convergence_error:
                     logger.error(
@@ -316,14 +301,12 @@ class QuantumWNTRSimulator(WNTRSimulator):
             if self._wn.sim_time > self._wn.options.time.duration:
                 break
 
-        results.linear_solver_results = linear_solver_results
-
         wntr.sim.hydraulics.get_results(self._wn, results, node_res, link_res)
 
         return results
 
 
-def _solver_helper(model, solver, linear_solver, solver_options):
+def _solver_helper(model, solver, wn, flow_encoding, head_encoding, solver_options):
     """Parameters
     ----------
     model: wntr.aml.Model
@@ -337,9 +320,8 @@ def _solver_helper(model, solver, linear_solver, solver_options):
     """  # noqa: D205
     logger.debug("solving")
     model.set_structure()
-    if solver is QuantumNewtonSolver:
-        _solver = QuantumNewtonSolver(linear_solver, options=solver_options)
-        sol = _solver.solve(model)
+    if solver is QuboPolynomialSolver:
+        _solver = QuboPolynomialSolver(wn, flow_encoding, head_encoding)
+        return _solver.solve(model, options=solver_options)
     else:
         raise ValueError("Solver not recognized.")
-    return sol
