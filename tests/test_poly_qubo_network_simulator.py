@@ -6,7 +6,7 @@ import pytest
 import wntr
 from qubops.encodings import PositiveQbitEncoding
 from wntr_quantum.sampler.simulated_annealing import generate_random_valid_sample
-from wntr_quantum.sim.solvers.qubo_polynomial_solver import QuboPolynomialSolver
+from wntr_quantum.sim.solvers import QuboPolynomialSolver
 
 NETWORKS_FOLDER = pathlib.Path(__file__).with_name("networks")
 INP_FILE = NETWORKS_FOLDER / "Net0_DW.inp"  # => toy wn model

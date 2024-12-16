@@ -22,7 +22,6 @@ dependencies = [
     "scipy",
     "wntr",
     "quantum_newton_raphson@git+https://github.com/QuantumApplicationLab/QuantumNewtonRaphson",
-    "qubols@git+https://github.com/QuantumApplicationLab/qubols",
     "qubops@git+https://github.com/QuantumApplicationLab/qubops",
 ]
 
