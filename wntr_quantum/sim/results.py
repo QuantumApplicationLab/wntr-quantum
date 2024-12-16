@@ -1,4 +1,5 @@
 """Quantum simulation results."""
+
 from wntr.sim.results import SimulationResults
 
 
