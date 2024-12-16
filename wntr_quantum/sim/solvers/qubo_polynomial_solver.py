@@ -434,3 +434,38 @@ class QuboPolynomialSolver(object):
 
         # returns
         return (SolverStatus.converged, "Solved Successfully", sol, res)
+
+    def multisolve(  # noqa: D417
+        self,
+        init_sample,
+        Tschedule,
+        num_reads=10,
+        optimize_values=None,
+        save_traj=False,
+        verbose=False,
+    ) -> Tuple:
+        """Sample the qubo problem multiple times.
+
+        Args:
+            init_sample (list): initial sample for the optimization
+            Tschedule (list): temperature schedule for the optimization
+            num_reads (int, default): number of reads (default 1)
+            optimize_values (None, list): a list of variables to optimize (default to None-> all variables)
+            save_traj (bool, optional): save the trajectory. Defaults to False.
+            verbose (bool, optional): print status. Defaults to False.
+
+        Returns:
+            Tuple: Solver status, str, solution, SimulatedAnnealingResults
+        """
+        sol, res = [], []
+        for _ in range(num_reads):
+            _, _, isol, ires = self.solve(
+                init_sample=init_sample,
+                Tschedule=Tschedule,
+                optimize_values=optimize_values,
+                save_traj=save_traj,
+                verbose=verbose,
+            )
+            sol.append(isol)
+            res.append(ires)
+        return sol, res
